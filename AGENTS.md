@@ -167,6 +167,7 @@ LLM 调用在测试中用 `FakeListChatModel` mock，不发真实请求。
 - 分支：`feat/xxx`、`fix/xxx`、`refactor/xxx`
 - Commit：`type(scope): 描述`，如 `feat(graph): add concurrent dispatch via Send API`
 - **不自动 push**；不提交 `.env`、`*.db`、`__pycache__/`、`*.sqlite`
+- PR: 参考.github/PR_TEMPLATE/PR_TEMPLATE.md,提交pr
 
 ---
 
