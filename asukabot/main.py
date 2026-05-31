@@ -3,20 +3,34 @@
 启动：uv run python -m asukabot.main
 """
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
 from asukabot import __version__
 from asukabot.config import get_settings
+from asukabot.core.graph.checkpointer import close_checkpointer
+from asukabot.routes import chat, ws
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """应用生命周期：关闭时释放 checkpointer 连接。"""
+    yield
+    await close_checkpointer()
 
 
 def create_app() -> FastAPI:
     """构建并返回 FastAPI 应用。"""
-    app = FastAPI(title="AsukaBot", version=__version__)
+    app = FastAPI(title="AsukaBot", version=__version__, lifespan=lifespan)
 
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok", "version": __version__}
 
+    app.include_router(chat.router)
+    app.include_router(ws.router)
     return app
 
 

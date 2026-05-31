@@ -20,7 +20,9 @@ class Settings(BaseSettings):
     debug: bool = False
 
     # 默认 LLM
-    default_model: str = "gpt-4o-mini"
+    default_model: str = "deepseek-chat"
+    deepseek_api_key: str = ""
+    deepseek_base_url: str = "https://api.deepseek.com"
     openai_api_key: str = ""
     anthropic_api_key: str = ""
 
