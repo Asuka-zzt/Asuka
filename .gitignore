@@ -1,1 +1,16 @@
 ref
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# 环境与数据
+.env
+data/
+*.db
+*.sqlite
