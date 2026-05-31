@@ -20,13 +20,20 @@ class Settings(BaseSettings):
     debug: bool = False
 
     # 默认 LLM
-    default_model: str = "gpt-4o-mini"
+    default_model: str = "deepseek-chat"
+    deepseek_api_key: str = ""
+    deepseek_base_url: str = "https://api.deepseek.com"
     openai_api_key: str = ""
     anthropic_api_key: str = ""
 
     # 数据
     data_dir: str = "./data"
     session_db: str = "./data/sessions.db"
+
+    # Wiki 生成工具
+    wiki_output_dir: str = "./output"
+    wiki_max_file_size: int = 100_000  # 单文件字节上限，超出跳过
+    wiki_max_abstractions: int = 10  # 识别核心抽象数量上限
 
 
 @lru_cache
