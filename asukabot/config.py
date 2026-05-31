@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     data_dir: str = "./data"
     session_db: str = "./data/sessions.db"
 
+    # Wiki 生成工具
+    wiki_output_dir: str = "./output"
+    wiki_max_file_size: int = 100_000  # 单文件字节上限，超出跳过
+    wiki_max_abstractions: int = 10  # 识别核心抽象数量上限
+
 
 @lru_cache
 def get_settings() -> Settings:
