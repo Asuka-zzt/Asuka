@@ -64,6 +64,9 @@ class WikiState(TypedDict, total=False):
     language: str
     output_dir: str
     max_abstractions: int
+    include_patterns: list[str]
+    exclude_patterns: list[str]
+    max_file_size: int
 
     # —— 中间产物 ——
     files: list[tuple[str, str]]  # (相对路径, 内容)

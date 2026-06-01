@@ -73,7 +73,13 @@ async def fetch_files(state: WikiState) -> dict[str, Any]:
     """遍历本地目录，收集源码文件。"""
     files = collect_files(
         state["project_path"],
-        max_file_size=get_settings().wiki_max_file_size,
+        include_patterns=set(state["include_patterns"])
+        if state.get("include_patterns")
+        else None,
+        exclude_patterns=set(state["exclude_patterns"])
+        if state.get("exclude_patterns")
+        else None,
+        max_file_size=state.get("max_file_size", get_settings().wiki_max_file_size),
     )
     if not files:
         raise ValueError(f"未在 {state['project_path']} 找到可分析的文件")
