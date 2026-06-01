@@ -16,7 +16,6 @@ def get_llm(model_id: str) -> BaseChatModel:
 
     if model_id.startswith("deepseek"):
         from langchain_openai import ChatOpenAI
-
         return ChatOpenAI(
             model=model_id,
             api_key=settings.deepseek_api_key,  # type: ignore[arg-type]

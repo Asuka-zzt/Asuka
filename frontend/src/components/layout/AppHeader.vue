@@ -11,6 +11,7 @@ import HealthBadge from './HealthBadge.vue'
     <nav class="nav">
       <RouterLink to="/" class="nav-link">Chat</RouterLink>
       <RouterLink to="/agent" class="nav-link">Agent 测试台</RouterLink>
+      <RouterLink to="/wiki" class="nav-link">Wiki 生成</RouterLink>
     </nav>
     <HealthBadge />
   </header>
@@ -21,6 +22,7 @@ import HealthBadge from './HealthBadge.vue'
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 0.75rem;
   padding: 0.6rem 1rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
@@ -43,6 +45,8 @@ import HealthBadge from './HealthBadge.vue'
 
 .nav {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 0.25rem;
 }
 
@@ -62,5 +66,16 @@ import HealthBadge from './HealthBadge.vue'
   opacity: 1;
   color: #cfc8ff;
   background: rgba(124, 108, 240, 0.18);
+}
+
+@media (max-width: 640px) {
+  .brand-sub {
+    display: none;
+  }
+
+  .nav-link {
+    padding: 0.32rem 0.5rem;
+    font-size: 0.78rem;
+  }
 }
 </style>
