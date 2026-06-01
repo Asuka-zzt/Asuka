@@ -1,14 +1,20 @@
 <script setup lang="ts">
-// Live2D 空位的占位视觉。
+withDefaults(defineProps<{
+  title?: string
+  hint?: string
+}>(), {
+  title: 'Live2D 区域',
+  hint: '人物画布将挂载于此',
+})
 </script>
 
 <template>
   <div class="placeholder">
     <div class="silhouette">
-      <span class="emoji">🎭</span>
+      <span class="spark">✦</span>
     </div>
-    <div class="title">Live2D 区域 · 待接入</div>
-    <div class="hint">人物画布将挂载于此</div>
+    <div class="title">{{ title }}</div>
+    <div class="hint">{{ hint }}</div>
   </div>
 </template>
 
@@ -33,7 +39,7 @@
   background: linear-gradient(180deg, rgba(124, 108, 240, 0.06), rgba(124, 108, 240, 0.01));
 }
 
-.emoji {
+.spark {
   font-size: 3rem;
   opacity: 0.7;
 }

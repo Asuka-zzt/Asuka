@@ -9,7 +9,11 @@
     "lint": "vue-tsc --noEmit"
   },
   "dependencies": {
+    "@pixi/app": "^6.5.10",
+    "@pixi/extensions": "^6.5.10",
+    "@pixi/ticker": "^6.5.10",
     "pinia": "^2.3.1",
+    "pixi-live2d-display": "^0.4.0",
     "vue": "^3.5.13",
     "vue-router": "^4.5.0"
   },
