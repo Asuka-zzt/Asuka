@@ -1,0 +1,4 @@
+# 允许这些依赖运行安装构建脚本（esbuild 需要编译平台二进制）。
+allowBuilds:
+  esbuild: true
+  vue-demi: true
