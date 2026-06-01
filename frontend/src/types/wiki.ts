@@ -17,6 +17,7 @@ export interface GenerateWikiRequest {
 export interface WikiFile {
   path: string
   size: number
+  content: string
 }
 
 export interface GenerateWikiResponse {

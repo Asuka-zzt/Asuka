@@ -55,6 +55,7 @@ class WikiFile(BaseModel):
 
     path: str
     size: int
+    content: str
 
 
 class GenerateWikiResponse(BaseModel):
@@ -138,6 +139,7 @@ def _generated_files(output_dir: Path) -> list[WikiFile]:
                 WikiFile(
                     path=path.relative_to(output_dir).as_posix(),
                     size=path.stat().st_size,
+                    content=path.read_text(encoding="utf-8"),
                 )
             )
     return files

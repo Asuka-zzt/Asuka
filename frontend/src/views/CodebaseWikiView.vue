@@ -1,11 +1,24 @@
 <script setup lang="ts">
-import type { GenerateWikiRequest, GenerateWikiResponse, WikiLanguage } from '@/types/wiki'
+import type { GenerateWikiRequest, GenerateWikiResponse, WikiFile, WikiLanguage } from '@/types/wiki'
 
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 
-import { generateWiki } from '@/api/client'
+import { generateWiki, postChat } from '@/api/client'
 
 type SourceType = 'repo' | 'local'
+
+interface MarkdownBlock {
+  type: 'heading' | 'paragraph' | 'list' | 'code' | 'quote' | 'hr'
+  level?: number
+  html?: string
+  items?: string[]
+  language?: string
+}
+
+interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
 
 const defaultInclude = [
   '*.c',
@@ -34,7 +47,7 @@ const defaultInclude = [
 
 const defaultExclude = ['*.lock', '*.log', '*_test.*', 'test_*']
 
-const sourceType = ref<SourceType>('repo')
+const sourceType = ref<SourceType>('local')
 const repo = ref('')
 const token = ref('')
 const localDir = ref('')
@@ -43,19 +56,74 @@ const includeText = ref(defaultInclude.join('\n'))
 const excludeText = ref(defaultExclude.join('\n'))
 const maxSize = ref(100000)
 const output = ref('output')
-const language = ref<WikiLanguage>('english')
+const language = ref<WikiLanguage>('chinese')
 const maxAbstractions = ref(10)
 const noCache = ref(false)
 const loading = ref(false)
 const error = ref('')
 const result = ref<GenerateWikiResponse | null>(null)
+const currentFilePath = ref('')
 const copied = ref('')
+
+const chatMessages = ref<ChatMessage[]>([
+  {
+    role: 'assistant',
+    content: '生成 Wiki 后，可以在这里询问项目结构、模块职责或下一步修改建议。当前使用普通对话，后续可升级为 RAG。',
+  },
+])
+const chatInput = ref('')
+const chatLoading = ref(false)
+const chatError = ref('')
+const chatList = ref<HTMLElement>()
 
 const canSubmit = computed(() => {
   const hasSource = sourceType.value === 'repo'
     ? Boolean(repo.value.trim())
     : Boolean(localDir.value.trim())
   return hasSource && maxSize.value > 0 && maxAbstractions.value > 0 && !loading.value
+})
+
+const orderedFiles = computed(() => {
+  const files = result.value?.files ?? []
+  return [...files].sort((a, b) => {
+    if (a.path === 'index.md')
+      return -1
+    if (b.path === 'index.md')
+      return 1
+    return a.path.localeCompare(b.path)
+  })
+})
+
+const currentFile = computed(() => {
+  return orderedFiles.value.find(file => file.path === currentFilePath.value)
+    ?? orderedFiles.value[0]
+    ?? null
+})
+
+const currentBlocks = computed(() => {
+  if (!currentFile.value)
+    return []
+  return renderMarkdown(currentFile.value.content)
+})
+
+const documentNav = computed(() => {
+  return orderedFiles.value.map(file => ({
+    path: file.path,
+    title: file.path === 'index.md' ? '项目总览' : extractTitle(file),
+    size: formatSize(file.size),
+  }))
+})
+
+const activeTitle = computed(() => {
+  if (!currentFile.value)
+    return '在线预览'
+  return currentFile.value.path === 'index.md' ? '项目总览' : extractTitle(currentFile.value)
+})
+
+watch(result, (value) => {
+  currentFilePath.value = value?.files.find(file => file.path === 'index.md')?.path
+    ?? value?.files[0]?.path
+    ?? ''
 })
 
 function splitPatterns(value: string): string[] {
@@ -94,16 +162,45 @@ async function submit() {
   loading.value = true
   error.value = ''
   copied.value = ''
-  result.value = null
   try {
     result.value = await generateWiki(buildPayload())
   }
   catch (e) {
+    result.value = null
     error.value = (e as Error).message
   }
   finally {
     loading.value = false
   }
+}
+
+async function sendQuestion() {
+  const message = chatInput.value.trim()
+  if (!message || chatLoading.value)
+    return
+  chatInput.value = ''
+  chatError.value = ''
+  chatMessages.value.push({ role: 'user', content: message })
+  chatLoading.value = true
+  await scrollChatToBottom()
+  try {
+    const conversationId = `wiki-${result.value?.project_name ?? 'preview'}`
+    const response = await postChat(conversationId, message)
+    chatMessages.value.push({ role: 'assistant', content: response.reply })
+  }
+  catch (e) {
+    chatError.value = (e as Error).message
+  }
+  finally {
+    chatLoading.value = false
+    await scrollChatToBottom()
+  }
+}
+
+async function scrollChatToBottom() {
+  await nextTick()
+  if (chatList.value)
+    chatList.value.scrollTop = chatList.value.scrollHeight
 }
 
 function formatSize(size: number): string {
@@ -112,9 +209,21 @@ function formatSize(size: number): string {
   return `${(size / 1024).toFixed(1)} KB`
 }
 
-async function copyText(label: string, text: string) {
-  await navigator.clipboard.writeText(text)
-  copied.value = label
+function extractTitle(file: WikiFile): string {
+  const heading = file.content
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .find(line => line.startsWith('# '))
+  if (heading)
+    return heading.replace(/^#+\s*/, '').trim()
+  return file.path.replace(/\.md$/i, '').replace(/^\d+_/, '').replace(/[_-]+/g, ' ')
+}
+
+async function copyOutputPath() {
+  if (!result.value)
+    return
+  await navigator.clipboard.writeText(result.value.output_dir)
+  copied.value = 'output'
 }
 
 function handleDrop(event: DragEvent) {
@@ -122,34 +231,147 @@ function handleDrop(event: DragEvent) {
   if (text)
     localDir.value = text
 }
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+}
+
+function renderInline(value: string): string {
+  let html = escapeHtml(value)
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>')
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label: string, href: string) => {
+    const safeHref = escapeHtml(href)
+    return `<a href="${safeHref}" target="_blank" rel="noreferrer">${label}</a>`
+  })
+  return html
+}
+
+function renderMarkdown(markdown: string): MarkdownBlock[] {
+  const blocks: MarkdownBlock[] = []
+  const lines = markdown.split(/\r?\n/)
+  let paragraph: string[] = []
+  let listItems: string[] = []
+  let codeLines: string[] = []
+  let codeLanguage = ''
+  let inCode = false
+
+  function flushParagraph() {
+    if (!paragraph.length)
+      return
+    blocks.push({ type: 'paragraph', html: renderInline(paragraph.join(' ')) })
+    paragraph = []
+  }
+
+  function flushList() {
+    if (!listItems.length)
+      return
+    blocks.push({ type: 'list', items: listItems.map(renderInline) })
+    listItems = []
+  }
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+    const fence = trimmed.match(/^```(.*)$/)
+    if (fence) {
+      if (inCode) {
+        blocks.push({
+          type: 'code',
+          language: codeLanguage,
+          html: escapeHtml(codeLines.join('\n')),
+        })
+        codeLines = []
+        codeLanguage = ''
+        inCode = false
+      }
+      else {
+        flushParagraph()
+        flushList()
+        inCode = true
+        codeLanguage = fence[1]?.trim() ?? ''
+      }
+      continue
+    }
+
+    if (inCode) {
+      codeLines.push(line)
+      continue
+    }
+
+    if (!trimmed) {
+      flushParagraph()
+      flushList()
+      continue
+    }
+
+    const heading = trimmed.match(/^(#{1,4})\s+(.+)$/)
+    if (heading) {
+      flushParagraph()
+      flushList()
+      blocks.push({
+        type: 'heading',
+        level: heading[1].length,
+        html: renderInline(heading[2]),
+      })
+      continue
+    }
+
+    if (/^[-*_]{3,}$/.test(trimmed)) {
+      flushParagraph()
+      flushList()
+      blocks.push({ type: 'hr' })
+      continue
+    }
+
+    const bullet = trimmed.match(/^[-*]\s+(.+)$/)
+    if (bullet) {
+      flushParagraph()
+      listItems.push(bullet[1])
+      continue
+    }
+
+    if (trimmed.startsWith('>')) {
+      flushParagraph()
+      flushList()
+      blocks.push({ type: 'quote', html: renderInline(trimmed.replace(/^>\s?/, '')) })
+      continue
+    }
+
+    flushList()
+    paragraph.push(trimmed)
+  }
+
+  if (inCode) {
+    blocks.push({ type: 'code', language: codeLanguage, html: escapeHtml(codeLines.join('\n')) })
+  }
+  flushParagraph()
+  flushList()
+  return blocks
+}
 </script>
 
 <template>
-  <div class="wiki-page">
-    <section class="hero">
-      <div>
-        <p class="eyebrow">
-          Codebase2Wiki
-        </p>
-        <h1>把代码库生成可阅读 Wiki</h1>
+  <div class="wiki-workspace">
+    <aside class="sidebar">
+      <div class="project-mark">
+        <div class="mark-icon">
+          W
+        </div>
+        <div>
+          <strong>Code Wiki</strong>
+          <span>{{ result?.project_name ?? '生成项目文档' }}</span>
+        </div>
       </div>
-      <button class="primary-btn" :disabled="!canSubmit" @click="submit">
-        {{ loading ? '生成中...' : '开始生成' }}
-      </button>
-    </section>
 
-    <div class="content-grid">
-      <section class="source-panel">
-        <div class="panel-head">
-          <h2>代码来源</h2>
+      <section class="source-box">
+        <div class="box-head">
+          <span>Source</span>
           <div class="segmented">
-            <button
-              :class="['segment', { active: sourceType === 'repo' }]"
-              type="button"
-              @click="sourceType = 'repo'"
-            >
-              GitHub
-            </button>
             <button
               :class="['segment', { active: sourceType === 'local' }]"
               type="button"
@@ -157,12 +379,37 @@ function handleDrop(event: DragEvent) {
             >
               Local
             </button>
+            <button
+              :class="['segment', { active: sourceType === 'repo' }]"
+              type="button"
+              @click="sourceType = 'repo'"
+            >
+              GitHub
+            </button>
           </div>
         </div>
 
-        <div v-if="sourceType === 'repo'" class="field-stack">
+        <label v-if="sourceType === 'local'" class="field">
+          <span>Local directory</span>
+          <input
+            v-model="localDir"
+            class="control"
+            placeholder="/path/to/project"
+            autocomplete="off"
+          >
+        </label>
+        <div
+          v-if="sourceType === 'local'"
+          class="drop-zone"
+          @dragover.prevent
+          @drop.prevent="handleDrop"
+        >
+          可拖入路径文本
+        </div>
+
+        <template v-else>
           <label class="field">
-            <span>Repo URL</span>
+            <span>Repository URL</span>
             <input
               v-model="repo"
               class="control"
@@ -176,186 +423,456 @@ function handleDrop(event: DragEvent) {
               v-model="token"
               class="control"
               type="password"
-              placeholder="Private repo 可选"
+              placeholder="private repo optional"
               autocomplete="off"
             >
           </label>
-        </div>
+        </template>
 
-        <div v-else class="field-stack">
+        <div class="compact-grid">
           <label class="field">
-            <span>Local Dir</span>
-            <input
-              v-model="localDir"
-              class="control"
-              placeholder="/path/to/project"
-              autocomplete="off"
-            >
-          </label>
-          <div class="drop-zone" @dragover.prevent @drop.prevent="handleDrop">
-            拖入路径文本，或填写后端服务可访问的本地目录
-          </div>
-        </div>
-      </section>
-
-      <section class="params-panel">
-        <div class="panel-head">
-          <h2>生成参数</h2>
-        </div>
-        <div class="form-grid">
-          <label class="field">
-            <span>项目名</span>
-            <input v-model="name" class="control" placeholder="留空自动推导">
+            <span>Name</span>
+            <input v-model="name" class="control" placeholder="auto">
           </label>
           <label class="field">
-            <span>输出目录</span>
-            <input v-model="output" class="control" placeholder="output">
-          </label>
-          <label class="field">
-            <span>语言</span>
+            <span>Language</span>
             <select v-model="language" class="control">
-              <option value="english">
-                English
-              </option>
               <option value="chinese">
                 中文
               </option>
+              <option value="english">
+                English
+              </option>
             </select>
           </label>
+        </div>
+
+        <details class="advanced">
+          <summary>高级参数</summary>
           <label class="field">
-            <span>最大文件大小</span>
-            <input v-model.number="maxSize" class="control" type="number" min="1">
+            <span>Output</span>
+            <input v-model="output" class="control" placeholder="output">
+          </label>
+          <div class="compact-grid">
+            <label class="field">
+              <span>Max size</span>
+              <input v-model.number="maxSize" class="control" type="number" min="1">
+            </label>
+            <label class="field">
+              <span>Chapters</span>
+              <input v-model.number="maxAbstractions" class="control" type="number" min="1">
+            </label>
+          </div>
+          <label class="field">
+            <span>Include</span>
+            <textarea v-model="includeText" class="control textarea" rows="5" />
           </label>
           <label class="field">
-            <span>最大抽象数</span>
-            <input v-model.number="maxAbstractions" class="control" type="number" min="1">
+            <span>Exclude</span>
+            <textarea v-model="excludeText" class="control textarea" rows="4" />
           </label>
           <label class="check-field">
             <input v-model="noCache" type="checkbox">
             <span>禁用缓存</span>
           </label>
-        </div>
+        </details>
 
-        <div class="pattern-grid">
-          <label class="field">
-            <span>Include patterns</span>
-            <textarea v-model="includeText" class="control textarea" rows="8" />
-          </label>
-          <label class="field">
-            <span>Exclude patterns</span>
-            <textarea v-model="excludeText" class="control textarea" rows="8" />
-          </label>
+        <button class="primary-btn" :disabled="!canSubmit" type="button" @click="submit">
+          {{ loading ? '生成中...' : '生成 Wiki' }}
+        </button>
+        <p v-if="error" class="error-text">
+          {{ error }}
+        </p>
+      </section>
+
+      <section class="toc">
+        <div class="toc-title">
+          On this page
+        </div>
+        <button
+          v-for="item in documentNav"
+          :key="item.path"
+          :class="['toc-item', { active: item.path === currentFilePath }]"
+          type="button"
+          @click="currentFilePath = item.path"
+        >
+          <span>{{ item.title }}</span>
+          <small>{{ item.size }}</small>
+        </button>
+        <div v-if="!documentNav.length" class="toc-empty">
+          生成后这里会显示文档目录
         </div>
       </section>
-    </div>
 
-    <section v-if="loading || error || result" class="result-panel">
-      <div class="panel-head">
-        <h2>生成结果</h2>
+      <div v-if="result" class="meta-box">
+        <span>Output</span>
+        <button type="button" @click="copyOutputPath">
+          {{ copied === 'output' ? '已复制' : result.output_dir }}
+        </button>
+      </div>
+    </aside>
+
+    <main class="reader">
+      <div class="reader-toolbar">
+        <div>
+          <p class="eyebrow">
+            {{ result?.project_name ?? 'Preview' }}
+          </p>
+          <h1>{{ activeTitle }}</h1>
+        </div>
         <span v-if="loading" class="status running">Running</span>
-        <span v-else-if="error" class="status failed">Failed</span>
-        <span v-else class="status success">Success</span>
+        <span v-else-if="result" class="status success">Ready</span>
       </div>
 
-      <div v-if="loading" class="loading-state">
-        正在分析代码结构并生成章节，工具调用期间可能短暂停顿。
-      </div>
-      <div v-else-if="error" class="error-state">
-        {{ error }}
-      </div>
-      <div v-else-if="result" class="result-body">
-        <div class="output-row">
-          <div>
-            <span class="muted">Output</span>
-            <code>{{ result.output_dir }}</code>
-          </div>
-          <button type="button" class="ghost-btn" @click="copyText('路径', result.output_dir)">
-            {{ copied === '路径' ? '已复制' : '复制路径' }}
-          </button>
+      <div v-if="loading" class="empty-reader">
+        <div class="spark">
+          ✦
         </div>
+        <h2>正在生成项目 Wiki</h2>
+        <p>分析文件、抽象模块并写入章节时会短暂停顿。</p>
+      </div>
 
-        <div class="file-head">
-          <span>{{ result.project_name }}</span>
-          <button
-            type="button"
-            class="ghost-btn"
-            @click="copyText('文件', result.files.map(file => file.path).join('\n'))"
-          >
-            {{ copied === '文件' ? '已复制' : '复制文件清单' }}
-          </button>
+      <article v-else-if="currentFile" class="markdown-body">
+        <template v-for="(block, index) in currentBlocks" :key="index">
+          <component
+            :is="`h${Math.min(block.level ?? 2, 4)}`"
+            v-if="block.type === 'heading'"
+            v-html="block.html"
+          />
+          <p v-else-if="block.type === 'paragraph'" v-html="block.html" />
+          <blockquote v-else-if="block.type === 'quote'" v-html="block.html" />
+          <hr v-else-if="block.type === 'hr'">
+          <ul v-else-if="block.type === 'list'">
+            <li v-for="(item, itemIndex) in block.items" :key="itemIndex" v-html="item" />
+          </ul>
+          <pre v-else-if="block.type === 'code'"><code v-html="block.html" /></pre>
+        </template>
+      </article>
+
+      <div v-else class="empty-reader">
+        <div class="spark">
+          ✦
         </div>
-        <ul class="file-list">
-          <li v-for="file in result.files" :key="file.path">
-            <span>{{ file.path }}</span>
-            <small>{{ formatSize(file.size) }}</small>
-          </li>
-        </ul>
+        <h2>选择代码来源并生成 Wiki</h2>
+        <p>生成完成后，中间区域会直接显示 Markdown 文档内容。</p>
       </div>
-    </section>
+    </main>
+
+    <aside class="chat-panel">
+      <div class="chat-head">
+        <div class="spark small">
+          ✦
+        </div>
+        <div>
+          <h2>项目 AI 对话</h2>
+          <p>普通对话模式</p>
+        </div>
+      </div>
+
+      <div ref="chatList" class="chat-list">
+        <div
+          v-for="(message, index) in chatMessages"
+          :key="index"
+          :class="['chat-message', message.role]"
+        >
+          {{ message.content }}
+        </div>
+        <div v-if="chatLoading" class="chat-message assistant">
+          正在回复...
+        </div>
+      </div>
+
+      <p v-if="chatError" class="chat-error">
+        {{ chatError }}
+      </p>
+
+      <form class="chat-input" @submit.prevent="sendQuestion">
+        <input
+          v-model="chatInput"
+          placeholder="Ask about this repository"
+          autocomplete="off"
+        >
+        <button :disabled="!chatInput.trim() || chatLoading" type="submit">
+          发送
+        </button>
+      </form>
+    </aside>
   </div>
 </template>
 
 <style scoped>
-.wiki-page {
+.wiki-workspace {
   height: 100%;
-  overflow-y: auto;
-  padding: 1.25rem;
-}
-
-.hero {
-  width: min(1120px, 100%);
-  margin: 0 auto 1rem;
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.eyebrow {
-  margin: 0 0 0.35rem;
-  color: #74d6bd;
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0;
-}
-
-h1,
-h2 {
-  margin: 0;
-}
-
-h1 {
-  font-size: 2rem;
-  line-height: 1.15;
-}
-
-h2 {
-  font-size: 1rem;
-}
-
-.content-grid {
-  width: min(1120px, 100%);
-  margin: 0 auto;
+  min-height: 0;
   display: grid;
-  grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.4fr);
-  gap: 1rem;
+  grid-template-columns: 19rem minmax(0, 1fr) 24rem;
+  gap: 0;
+  background: #050609;
+  color: #f2f4f8;
 }
 
-.source-panel,
-.params-panel,
-.result-panel {
-  background: rgba(20, 18, 30, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 0.75rem;
+.sidebar,
+.chat-panel {
+  min-height: 0;
+  overflow-y: auto;
   padding: 1rem;
+  background: #050609;
 }
 
-.result-panel {
-  width: min(1120px, 100%);
-  margin: 1rem auto 0;
+.sidebar {
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.panel-head {
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.project-mark {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.mark-icon,
+.spark {
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #5ff0b4, #6f8cff 55%, #ff8db6);
+  color: #fff;
+  font-weight: 800;
+}
+
+.mark-icon {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.45rem;
+}
+
+.project-mark strong,
+.chat-head h2 {
+  display: block;
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.project-mark span,
+.chat-head p {
+  display: block;
+  margin: 0.1rem 0 0;
+  color: rgba(242, 244, 248, 0.58);
+  font-size: 0.78rem;
+}
+
+.source-box,
+.toc,
+.meta-box {
+  margin-top: 1rem;
+}
+
+.box-head,
+.compact-grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.box-head {
+  margin-bottom: 0.8rem;
+  color: rgba(242, 244, 248, 0.72);
+  font-weight: 700;
+}
+
+.segmented {
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 0.16rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.segment {
+  min-width: 3.8rem;
+  padding: 0.34rem 0.5rem;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: rgba(242, 244, 248, 0.66);
+  font-size: 0.78rem;
+}
+
+.segment.active {
+  background: rgba(97, 142, 255, 0.32);
+  color: #fff;
+}
+
+.field {
+  display: grid;
+  gap: 0.35rem;
+  margin-bottom: 0.7rem;
+  color: rgba(242, 244, 248, 0.62);
+  font-size: 0.76rem;
+}
+
+.control,
+.chat-input input {
+  width: 100%;
+  min-height: 2.35rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.5rem;
+  background: #111318;
+  color: #f2f4f8;
+  font: inherit;
+}
+
+.control {
+  padding: 0.5rem 0.6rem;
+}
+
+.control:focus,
+.chat-input input:focus {
+  outline: none;
+  border-color: rgba(101, 151, 255, 0.8);
+}
+
+.textarea {
+  min-height: 7rem;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.drop-zone {
+  margin: -0.25rem 0 0.75rem;
+  padding: 0.65rem;
+  border: 1px dashed rgba(101, 151, 255, 0.36);
+  border-radius: 0.5rem;
+  color: rgba(242, 244, 248, 0.48);
+  text-align: center;
+  font-size: 0.76rem;
+}
+
+.advanced {
+  margin: 0.25rem 0 0.8rem;
+  color: rgba(242, 244, 248, 0.7);
+}
+
+.advanced summary {
+  cursor: pointer;
+  margin-bottom: 0.65rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.check-field {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0.2rem 0 0.85rem;
+  color: rgba(242, 244, 248, 0.72);
+  font-size: 0.82rem;
+}
+
+.primary-btn,
+.chat-input button,
+.meta-box button {
+  width: 100%;
+  min-height: 2.45rem;
+  border-radius: 0.5rem;
+  background: #2f7df6;
+  color: #fff;
+  font-weight: 800;
+}
+
+.primary-btn:disabled,
+.chat-input button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.error-text,
+.chat-error {
+  color: #ff9a9a;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.toc {
+  padding-top: 0.8rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.toc-title {
+  margin-bottom: 0.6rem;
+  color: rgba(242, 244, 248, 0.64);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.toc-item {
+  width: 100%;
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.62rem 0.75rem;
+  border-left: 2px solid transparent;
+  background: transparent;
+  color: rgba(242, 244, 248, 0.78);
+  text-align: left;
+}
+
+.toc-item.active {
+  border-left-color: #7eadff;
+  background: rgba(126, 173, 255, 0.1);
+  color: #fff;
+}
+
+.toc-item span {
+  line-height: 1.25;
+}
+
+.toc-item small,
+.toc-empty {
+  color: rgba(242, 244, 248, 0.44);
+  font-size: 0.72rem;
+}
+
+.meta-box {
+  display: grid;
+  gap: 0.4rem;
+  color: rgba(242, 244, 248, 0.48);
+  font-size: 0.72rem;
+}
+
+.meta-box button {
+  overflow: hidden;
+  padding: 0 0.65rem;
+  background: rgba(255, 255, 255, 0.07);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.reader {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1rem;
+  background: #08090d;
+}
+
+.reader-toolbar,
+.markdown-body,
+.empty-reader {
+  width: min(58rem, 100%);
+  margin: 0 auto;
+}
+
+.reader-toolbar {
+  min-height: 4rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -363,233 +880,244 @@ h2 {
   margin-bottom: 1rem;
 }
 
-.segmented {
-  display: inline-grid;
-  grid-template-columns: 1fr 1fr;
-  padding: 0.18rem;
-  border-radius: 0.6rem;
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.segment {
-  min-width: 4.5rem;
-  padding: 0.38rem 0.7rem;
-  border-radius: 0.45rem;
-  background: transparent;
-  color: rgba(232, 230, 240, 0.72);
-}
-
-.segment.active {
-  background: #ececf5;
-  color: #171421;
-}
-
-.field-stack,
-.form-grid,
-.pattern-grid {
-  display: grid;
-  gap: 0.85rem;
-}
-
-.form-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.pattern-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin-top: 0.95rem;
-}
-
-.field {
-  display: grid;
-  gap: 0.4rem;
-  color: rgba(232, 230, 240, 0.66);
+.eyebrow {
+  margin: 0 0 0.25rem;
+  color: rgba(242, 244, 248, 0.52);
   font-size: 0.78rem;
-}
-
-.control {
-  width: 100%;
-  min-height: 2.5rem;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.11);
-  border-radius: 0.55rem;
-  padding: 0.55rem 0.65rem;
-  color: #ececf5;
-  font: inherit;
-}
-
-.control:focus {
-  outline: none;
-  border-color: rgba(116, 214, 189, 0.65);
-}
-
-.textarea {
-  min-height: 12rem;
-  resize: vertical;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.8rem;
-  line-height: 1.5;
-}
-
-.check-field {
-  min-height: 2.5rem;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  color: rgba(232, 230, 240, 0.78);
-  font-size: 0.86rem;
-}
-
-.drop-zone {
-  min-height: 5rem;
-  display: grid;
-  place-items: center;
-  padding: 0.85rem;
-  border: 1px dashed rgba(116, 214, 189, 0.38);
-  border-radius: 0.65rem;
-  color: rgba(232, 230, 240, 0.58);
-  text-align: center;
-  font-size: 0.85rem;
-}
-
-.primary-btn,
-.ghost-btn {
-  min-height: 2.4rem;
-  border-radius: 0.55rem;
-  padding: 0.55rem 0.9rem;
-  color: #fff;
-}
-
-.primary-btn {
-  background: #319f86;
   font-weight: 700;
 }
 
-.primary-btn:disabled {
-  opacity: 0.42;
-}
-
-.ghost-btn {
-  background: rgba(255, 255, 255, 0.07);
-  color: #ececf5;
-  white-space: nowrap;
+.reader-toolbar h1 {
+  margin: 0;
+  font-size: 1.55rem;
+  line-height: 1.2;
 }
 
 .status {
+  padding: 0.32rem 0.55rem;
   border-radius: 999px;
-  padding: 0.25rem 0.55rem;
   font-size: 0.72rem;
-  font-weight: 700;
+  font-weight: 800;
 }
 
 .status.running {
-  background: rgba(85, 166, 255, 0.16);
-  color: #91c6ff;
-}
-
-.status.failed {
-  background: rgba(255, 107, 107, 0.16);
-  color: #ff9a9a;
+  background: rgba(101, 151, 255, 0.18);
+  color: #9dc0ff;
 }
 
 .status.success {
-  background: rgba(116, 214, 189, 0.16);
-  color: #8ee8d3;
+  background: rgba(95, 240, 180, 0.14);
+  color: #88efc1;
 }
 
-.loading-state,
-.error-state {
-  font-size: 0.9rem;
-  line-height: 1.6;
+.markdown-body {
+  padding: 2rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.75rem;
+  background: #15161a;
+  box-shadow: 0 18px 55px rgba(0, 0, 0, 0.28);
 }
 
-.error-state {
-  color: #ff9a9a;
+.markdown-body :deep(h1),
+.markdown-body :deep(h2),
+.markdown-body :deep(h3),
+.markdown-body :deep(h4) {
+  margin: 1.4rem 0 0.7rem;
+  line-height: 1.25;
 }
 
-.result-body {
+.markdown-body :deep(h1:first-child),
+.markdown-body :deep(h2:first-child),
+.markdown-body :deep(h3:first-child) {
+  margin-top: 0;
+}
+
+.markdown-body :deep(h1) {
+  font-size: 2rem;
+}
+
+.markdown-body :deep(h2) {
+  padding-top: 0.7rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 1.35rem;
+}
+
+.markdown-body :deep(h3) {
+  font-size: 1.08rem;
+}
+
+.markdown-body p,
+.markdown-body li,
+.markdown-body blockquote {
+  color: rgba(242, 244, 248, 0.78);
+  font-size: 0.95rem;
+  line-height: 1.75;
+}
+
+.markdown-body ul {
+  margin: 0.6rem 0 1rem;
+  padding-left: 1.2rem;
+}
+
+.markdown-body blockquote {
+  margin: 1rem 0;
+  padding: 0.7rem 0.9rem;
+  border-left: 3px solid #7eadff;
+  background: rgba(126, 173, 255, 0.08);
+}
+
+.markdown-body pre {
+  overflow-x: auto;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  background: #08090d;
+}
+
+.markdown-body code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.markdown-body p code,
+.markdown-body li code {
+  padding: 0.12rem 0.28rem;
+  border-radius: 0.3rem;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.markdown-body :deep(a) {
+  color: #9dc0ff;
+}
+
+.empty-reader {
+  min-height: 30rem;
   display: grid;
-  gap: 1rem;
+  place-items: center;
+  align-content: center;
+  gap: 0.65rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.75rem;
+  background: #15161a;
+  text-align: center;
 }
 
-.output-row,
-.file-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.muted {
-  display: block;
-  margin-bottom: 0.25rem;
-  color: rgba(232, 230, 240, 0.5);
-  font-size: 0.72rem;
-}
-
-code {
-  word-break: break-all;
-  color: #f1f1f8;
-}
-
-.file-head {
-  color: rgba(232, 230, 240, 0.8);
-  font-weight: 700;
-}
-
-.file-list {
-  list-style: none;
-  padding: 0;
+.empty-reader h2 {
   margin: 0;
-  display: grid;
-  gap: 0.4rem;
+  font-size: 1.35rem;
 }
 
-.file-list li {
+.empty-reader p {
+  margin: 0;
+  color: rgba(242, 244, 248, 0.52);
+}
+
+.spark {
+  width: 4rem;
+  height: 4rem;
+  border-radius: 999px;
+  font-size: 2.2rem;
+}
+
+.spark.small {
+  width: 2.4rem;
+  height: 2.4rem;
+  flex: 0 0 auto;
+  font-size: 1.25rem;
+}
+
+.chat-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 0.75rem;
-  min-height: 2.15rem;
-  padding: 0.45rem 0.6rem;
-  border-radius: 0.45rem;
-  background: rgba(255, 255, 255, 0.045);
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.file-list span {
-  min-width: 0;
-  overflow-wrap: anywhere;
+.chat-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 1rem 0;
 }
 
-.file-list small {
-  color: rgba(232, 230, 240, 0.5);
-  white-space: nowrap;
+.chat-message {
+  max-width: 88%;
+  padding: 0.72rem 0.82rem;
+  border-radius: 0.65rem;
+  color: rgba(242, 244, 248, 0.84);
+  font-size: 0.9rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
 }
 
-@media (max-width: 860px) {
-  .wiki-page {
-    padding: 1rem 0.75rem;
+.chat-message.assistant {
+  align-self: flex-start;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.chat-message.user {
+  align-self: flex-end;
+  background: rgba(47, 125, 246, 0.3);
+  color: #fff;
+}
+
+.chat-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 4.5rem;
+  gap: 0.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.chat-input input {
+  padding: 0.6rem 0.8rem;
+}
+
+.chat-input button {
+  min-height: 2.6rem;
+}
+
+@media (max-width: 1180px) {
+  .wiki-workspace {
+    grid-template-columns: 17rem minmax(0, 1fr);
   }
 
-  .hero,
-  .content-grid,
-  .result-panel {
+  .chat-panel {
+    grid-column: 1 / -1;
+    min-height: 22rem;
+    border-left: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+  }
+}
+
+@media (max-width: 760px) {
+  .wiki-workspace {
+    display: block;
+    overflow-y: auto;
+  }
+
+  .sidebar,
+  .reader,
+  .chat-panel {
+    overflow: visible;
+    border: none;
+  }
+
+  .reader-toolbar,
+  .markdown-body,
+  .empty-reader {
     width: 100%;
   }
 
-  .hero,
-  .content-grid,
-  .form-grid,
-  .pattern-grid,
-  .output-row,
-  .file-head {
-    grid-template-columns: 1fr;
-    flex-direction: column;
-    align-items: stretch;
+  .markdown-body {
+    padding: 1rem;
   }
 
-  h1 {
-    font-size: 1.55rem;
+  .compact-grid,
+  .box-head {
+    grid-template-columns: 1fr;
   }
 }
 </style>

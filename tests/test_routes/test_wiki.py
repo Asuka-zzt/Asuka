@@ -53,6 +53,7 @@ def test_generate_wiki_route_local_dir(
         "01_util.md",
         "02_core.md",
     }
+    assert all(isinstance(item["content"], str) and item["content"] for item in payload["files"])
 
 
 def test_generate_wiki_route_requires_one_source(wiki_app: FastAPI) -> None:
