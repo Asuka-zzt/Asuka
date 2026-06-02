@@ -360,3 +360,9 @@ WS token
 - `done` 时 flush 剩余文本。
 - 新消息发送时停止当前播放并清空旧队列。
 - TTS 失败只跳过当前片段，不影响文字流。
+
+补充修复：
+
+- TTS 入队不再直接依赖单个 token，而是基于完整 assistant 文本快照计算增量，降低中间 token/文本块漏入队风险。
+- 入队前统一清洗朗读文本：去除 Markdown 控制符、链接 URL、代码围栏、emoji、`[emotion:*]` 等控制标签。
+- `*`、emoji、Markdown 装饰被读出来是输入清洗问题，不优先通过更换 TTS 模型解决；只有清洗后语调或稳定性仍不满足，再评估其他 TTS provider。

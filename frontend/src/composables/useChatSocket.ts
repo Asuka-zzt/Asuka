@@ -52,8 +52,9 @@ export function useChatSocket() {
     ws.onmessage = (e: MessageEvent) => {
       const data = JSON.parse(e.data as string) as WsEvent
       if (data.type === 'token') {
-        store.appendToken(data.content)
-        tts.feedToken(data.content)
+        const message = store.appendToken(data.content)
+        if (message)
+          tts.feedSnapshot(message.content)
       }
       else if (data.type === 'done') {
         const message = store.finalize()

@@ -16,6 +16,8 @@ interface QueuedSpeech {
 
 const CHUNK_BOUNDARY_RE = /[。！？!?；;]\s*/
 const EMOTION_TAG_RE = /\[emotion:(idle|think|happy|sad)\]\s*$/i
+const EMOJI_RE = /[\p{Extended_Pictographic}\uFE0F\u200D\u20E3]/gu
+const URL_RE = /https?:\/\/\S+/gi
 const MIN_STREAM_CHARS = 48
 
 function createAudioContext(): AudioContext {
@@ -35,6 +37,24 @@ function stripTrailingEmotionTag(text: string): string {
   return text.replace(EMOTION_TAG_RE, '').trimEnd()
 }
 
+function cleanForSpeech(text: string): string {
+  return stripTrailingEmotionTag(text)
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(URL_RE, ' ')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^\s*[-+*]\s+/gm, '')
+    .replace(/^\s*\d+[.)]\s+/gm, '')
+    .replace(/^\s*>\s?/gm, '')
+    .replace(/[*_~^|#[\]{}<>]/g, '')
+    .replace(/[，,、]\s*/g, '，')
+    .replace(EMOJI_RE, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 export function useTtsAudio() {
   const live2d = useLive2DStore()
   let audio: HTMLAudioElement | undefined
@@ -43,6 +63,7 @@ export function useTtsAudio() {
   let raf = 0
   let playToken = 0
   let pendingText = ''
+  let lastSnapshot = ''
   let playing = false
   const queue: QueuedSpeech[] = []
 
@@ -165,6 +186,10 @@ export function useTtsAudio() {
     }
     finally {
       playing = false
+      if (token === playToken && queue.length) {
+        void drainQueue(token)
+        return
+      }
       if (token === playToken) {
         releaseAudio()
         live2d.setEmotion('idle')
@@ -173,7 +198,7 @@ export function useTtsAudio() {
   }
 
   function enqueueText(text: string, emotion?: EmotionType): void {
-    const clean = stripTrailingEmotionTag(text).trim()
+    const clean = cleanForSpeech(text)
     if (!clean)
       return
 
@@ -218,6 +243,18 @@ export function useTtsAudio() {
     }
   }
 
+  function feedSnapshot(content: string): void {
+    if (content.startsWith(lastSnapshot)) {
+      feedToken(content.slice(lastSnapshot.length))
+      lastSnapshot = content
+      return
+    }
+
+    const commonLength = sharedPrefixLength(lastSnapshot, content)
+    feedToken(content.slice(commonLength))
+    lastSnapshot = content
+  }
+
   function flush(emotion?: EmotionType): void {
     let chunk = takeNextChunk(true)
     while (chunk) {
@@ -233,6 +270,7 @@ export function useTtsAudio() {
     playToken += 1
     queue.length = 0
     pendingText = ''
+    lastSnapshot = ''
     playing = false
     releaseAudio()
     live2d.setEmotion('idle')
@@ -244,5 +282,13 @@ export function useTtsAudio() {
     audioContext = undefined
   })
 
-  return { feedToken, flush, enqueueText, stop }
+  return { feedToken, feedSnapshot, flush, enqueueText, stop }
+}
+
+function sharedPrefixLength(a: string, b: string): number {
+  const max = Math.min(a.length, b.length)
+  let index = 0
+  while (index < max && a[index] === b[index])
+    index += 1
+  return index
 }
