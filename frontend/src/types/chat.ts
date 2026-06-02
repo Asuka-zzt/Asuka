@@ -1,3 +1,5 @@
+import type { EmotionType } from './live2d'
+
 export type Role = 'user' | 'assistant'
 
 export interface Message {
@@ -13,6 +15,14 @@ export type WsEvent =
   | { type: 'token', content: string }
   | { type: 'done' }
   | { type: 'error', content: string }
+  | {
+    type: 'live2d.emotion'
+    emotion: EmotionType
+    motion?: string
+    expression?: string
+    durationMs?: number
+    intensity?: number
+  }
 
 export interface AgentInfo {
   id: string

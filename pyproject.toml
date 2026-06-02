@@ -15,6 +15,7 @@ dependencies = [
     "langchain-openai>=0.2.0",
     "langchain-anthropic>=0.2.0",
     "socksio>=1.0.0",
+    "edge-tts>=7.2.8",
 ]
 
 [dependency-groups]
@@ -31,6 +32,9 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[[tool.uv.index]]
+url = "https://mirrors.aliyun.com/pypi/simple"
 
 [tool.mypy]
 python_version = "3.12"

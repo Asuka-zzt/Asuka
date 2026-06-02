@@ -36,12 +36,13 @@ export const useChatStore = defineStore('chat', () => {
       m.content += token
   }
 
-  function finalize() {
+  function finalize(): Message | undefined {
     const m = current()
     if (m)
       m.streaming = false
     streamingId = null
     sending.value = false
+    return m
   }
 
   function setError(msg: string) {

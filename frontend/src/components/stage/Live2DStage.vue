@@ -1,14 +1,23 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 
 import { useLive2D } from '@/composables/useLive2D'
+import { useLive2DStore } from '@/stores/live2d'
 import StagePlaceholder from './StagePlaceholder.vue'
 
 const props = defineProps<{ modelUrl?: string }>()
 
 const stageRef = ref<HTMLDivElement>()
 const configuredModelUrl = computed(() => props.modelUrl ?? import.meta.env.VITE_LIVE2D_MODEL_URL ?? '')
-const { state, error, mount, dispose } = useLive2D(stageRef)
+const live2dStore = useLive2DStore()
+const { motionCommand, mouthOpen } = storeToRefs(live2dStore)
+const { state, error, mount, dispose, playMotion, setMouthOpen } = useLive2D(stageRef)
+
+function playCurrentMotion(): void {
+  const command = motionCommand.value
+  playMotion(command.group, command.index, command.fallbackGroups)
+}
 
 onMounted(() => {
   if (configuredModelUrl.value)
@@ -22,6 +31,21 @@ watch(configuredModelUrl, (modelUrl) => {
     dispose()
     state.value = 'placeholder'
   }
+})
+
+watch(state, (nextState) => {
+  if (nextState === 'mounted')
+    playCurrentMotion()
+})
+
+watch(motionCommand, () => {
+  if (state.value === 'mounted')
+    playCurrentMotion()
+}, { deep: true })
+
+watch(mouthOpen, (value) => {
+  if (state.value === 'mounted')
+    setMouthOpen(value)
 })
 </script>
 

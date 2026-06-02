@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from asukabot import __version__
 from asukabot.config import get_settings
 from asukabot.core.graph.checkpointer import close_checkpointer
-from asukabot.routes import chat, wiki, ws
+from asukabot.routes import chat, tts, wiki, ws
 
 
 @asynccontextmanager
@@ -30,6 +30,7 @@ def create_app() -> FastAPI:
         return {"status": "ok", "version": __version__}
 
     app.include_router(chat.router)
+    app.include_router(tts.router)
     app.include_router(wiki.router)
     app.include_router(ws.router)
     return app

@@ -27,7 +27,12 @@ interface Live2DRuntime {
     anchor?: { set: (x: number, y?: number) => void }
     destroy: () => void
     on?: (event: string, handler: (hitAreas: string[]) => void) => void
-    motion?: (group: string) => void
+    motion?: (group: string, index?: number) => unknown
+    internalModel?: {
+      coreModel?: {
+        setParameterValueById?: (id: string, value: number) => void
+      }
+    }
   }
   modelSize?: { width: number, height: number }
   resizeObserver?: ResizeObserver
@@ -210,7 +215,32 @@ export function useLive2D(container: Ref<HTMLDivElement | undefined>) {
     runtime.app = undefined
   }
 
+  function playMotion(group: string, index?: number, fallbackGroups: string[] = []): boolean {
+    if (!runtime.model?.motion)
+      return false
+
+    for (const candidate of [group, ...fallbackGroups]) {
+      try {
+        runtime.model.motion(candidate, index)
+        return true
+      }
+      catch (e) {
+        console.warn(`[live2d] motion "${candidate}" failed:`, e)
+      }
+    }
+
+    return false
+  }
+
+  function setParameter(parameterId: string, value: number): void {
+    runtime.model?.internalModel?.coreModel?.setParameterValueById?.(parameterId, value)
+  }
+
+  function setMouthOpen(value: number): void {
+    setParameter('ParamMouthOpenY', Math.min(1, Math.max(0, value)))
+  }
+
   onBeforeUnmount(dispose)
 
-  return { state, error, mount, dispose }
+  return { state, error, mount, dispose, playMotion, setParameter, setMouthOpen }
 }
