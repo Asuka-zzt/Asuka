@@ -13,13 +13,19 @@ interface QueuedSpeech {
   text: string
   emotion?: EmotionType
   retries: number
+  blobPromise: Promise<TtsBlobResult>
 }
+
+type TtsBlobResult =
+  | { ok: true, blob: Blob }
+  | { ok: false, error: unknown }
 
 const CHUNK_BOUNDARY_RE = /[。！？!?；;]\s*/
 const EMOTION_TAG_RE = /\[emotion:(idle|think|happy|sad)\]\s*$/i
 const EMOJI_RE = /[\p{Extended_Pictographic}\uFE0F\u200D\u20E3]/gu
 const URL_RE = /https?:\/\/\S+/gi
-const MIN_STREAM_CHARS = 48
+const FIRST_CHUNK_CHARS = 18
+const NEXT_CHUNK_CHARS = 42
 
 function createAudioContext(): AudioContext {
   const AudioContextCtor = window.AudioContext ?? (window as AudioWindow).webkitAudioContext
@@ -56,6 +62,15 @@ function cleanForSpeech(text: string): string {
     .trim()
 }
 
+async function preloadTts(text: string): Promise<TtsBlobResult> {
+  try {
+    return { ok: true, blob: await postTts(text) }
+  }
+  catch (error) {
+    return { ok: false, error }
+  }
+}
+
 export function useTtsAudio() {
   const live2d = useLive2DStore()
   let audio: HTMLAudioElement | undefined
@@ -66,6 +81,7 @@ export function useTtsAudio() {
   let playToken = 0
   let pendingText = ''
   let lastSnapshot = ''
+  let chunksQueued = 0
   let playing = false
   const queue: QueuedSpeech[] = []
 
@@ -146,13 +162,15 @@ export function useTtsAudio() {
     if (token !== playToken)
       return true
 
-    const blob = await postTts(segment.text)
+    const result = await segment.blobPromise
+    if (!result.ok)
+      throw result.error
     if (token !== playToken)
       return true
     if (!audio)
       return false
 
-    objectUrl = URL.createObjectURL(blob)
+    objectUrl = URL.createObjectURL(result.blob)
     audio.src = objectUrl
     live2d.setSpeaking(true)
     analyse(activeAnalyser, token)
@@ -182,13 +200,13 @@ export function useTtsAudio() {
         try {
           const ok = await playQueuedSegment(segment, token)
           if (!ok && segment.retries < 1)
-            queue.unshift({ ...segment, retries: segment.retries + 1 })
+            queue.unshift(retrySegment(segment))
         }
         catch (err) {
           console.warn('[tts] streaming playback failed:', err)
           clearSegmentUrl()
           if (segment.retries < 1)
-            queue.unshift({ ...segment, retries: segment.retries + 1 })
+            queue.unshift(retrySegment(segment))
         }
       }
     }
@@ -210,8 +228,22 @@ export function useTtsAudio() {
     if (!clean)
       return
 
-    queue.push({ text: clean, emotion, retries: 0 })
+    queue.push({
+      text: clean,
+      emotion,
+      retries: 0,
+      blobPromise: preloadTts(clean),
+    })
+    chunksQueued += 1
     void drainQueue(playToken)
+  }
+
+  function retrySegment(segment: QueuedSpeech): QueuedSpeech {
+    return {
+      ...segment,
+      retries: segment.retries + 1,
+      blobPromise: preloadTts(segment.text),
+    }
   }
 
   function takeNextChunk(flush = false): string | undefined {
@@ -227,9 +259,10 @@ export function useTtsAudio() {
       return chunk
     }
 
-    if (pendingText.length >= MIN_STREAM_CHARS) {
-      const chunk = pendingText.slice(0, MIN_STREAM_CHARS)
-      pendingText = pendingText.slice(MIN_STREAM_CHARS)
+    const minChars = chunksQueued === 0 ? FIRST_CHUNK_CHARS : NEXT_CHUNK_CHARS
+    if (pendingText.length >= minChars) {
+      const chunk = pendingText.slice(0, minChars)
+      pendingText = pendingText.slice(minChars)
       return chunk
     }
 
@@ -279,6 +312,7 @@ export function useTtsAudio() {
     queue.length = 0
     pendingText = ''
     lastSnapshot = ''
+    chunksQueued = 0
     playing = false
     releaseAudio()
     audio = undefined
