@@ -12,6 +12,7 @@ interface AudioWindow extends Window {
 interface QueuedSpeech {
   text: string
   emotion?: EmotionType
+  retries: number
 }
 
 const CHUNK_BOUNDARY_RE = /[。！？!?；;]\s*/
@@ -58,6 +59,7 @@ function cleanForSpeech(text: string): string {
 export function useTtsAudio() {
   const live2d = useLive2DStore()
   let audio: HTMLAudioElement | undefined
+  let analyser: AnalyserNode | undefined
   let objectUrl: string | undefined
   let audioContext: AudioContext | undefined
   let raf = 0
@@ -75,7 +77,6 @@ export function useTtsAudio() {
     if (audio) {
       audio.pause()
       audio.src = ''
-      audio = undefined
     }
     if (objectUrl) {
       URL.revokeObjectURL(objectUrl)
@@ -104,64 +105,67 @@ export function useTtsAudio() {
     tick()
   }
 
-  async function prepareAudioElement(token: number): Promise<AnalyserNode> {
+  async function ensureAudioPipeline(): Promise<AnalyserNode> {
+    if (audio && analyser)
+      return analyser
+
     audio = new Audio()
-    audio.crossOrigin = 'anonymous'
+    audio.preload = 'auto'
     audioContext ??= createAudioContext()
     if (audioContext.state === 'suspended')
       await audioContext.resume()
 
     const source = audioContext.createMediaElementSource(audio)
-    const analyser = audioContext.createAnalyser()
+    analyser = audioContext.createAnalyser()
     analyser.fftSize = 512
     analyser.smoothingTimeConstant = 0.55
     source.connect(analyser)
     analyser.connect(audioContext.destination)
 
-    audio.addEventListener('ended', () => {
-      if (token === playToken)
-        releaseAudio()
-    }, { once: true })
-    audio.addEventListener('error', () => {
-      if (token === playToken)
-        releaseAudio()
-    }, { once: true })
-
     return analyser
   }
 
-  async function playWithBlob(text: string, token: number): Promise<void> {
-    const blob = await postTts(text)
-    if (token !== playToken)
-      return
-
-    objectUrl = URL.createObjectURL(blob)
-    if (!audio)
-      return
-
-    audio.src = objectUrl
-    await audio.play()
+  function clearSegmentUrl(): void {
+    if (audio) {
+      audio.pause()
+      audio.removeAttribute('src')
+      audio.load()
+    }
+    if (objectUrl) {
+      URL.revokeObjectURL(objectUrl)
+      objectUrl = undefined
+    }
   }
 
-  async function playQueuedSegment(segment: QueuedSpeech, token: number): Promise<void> {
-    releaseAudio()
+  async function playQueuedSegment(segment: QueuedSpeech, token: number): Promise<boolean> {
+    clearSegmentUrl()
     if (segment.emotion)
       live2d.setEmotion(segment.emotion)
 
-    const analyser = await prepareAudioElement(token)
+    const activeAnalyser = await ensureAudioPipeline()
     if (token !== playToken)
-      return
+      return true
 
-    live2d.setSpeaking(true)
-    analyse(analyser, token)
-
-    await playWithBlob(segment.text, token)
-
+    const blob = await postTts(segment.text)
+    if (token !== playToken)
+      return true
     if (!audio)
-      return
+      return false
 
-    if (!audio.ended)
-      await waitForEvent(audio, 'ended')
+    objectUrl = URL.createObjectURL(blob)
+    audio.src = objectUrl
+    live2d.setSpeaking(true)
+    analyse(activeAnalyser, token)
+    await audio.play()
+    await Promise.race([
+      waitForEvent(audio, 'ended'),
+      waitForEvent(audio, 'error').then(() => {
+        throw new Error('audio playback failed')
+      }),
+    ])
+
+    clearSegmentUrl()
+    return true
   }
 
   async function drainQueue(token: number): Promise<void> {
@@ -176,11 +180,15 @@ export function useTtsAudio() {
           continue
 
         try {
-          await playQueuedSegment(segment, token)
+          const ok = await playQueuedSegment(segment, token)
+          if (!ok && segment.retries < 1)
+            queue.unshift({ ...segment, retries: segment.retries + 1 })
         }
         catch (err) {
           console.warn('[tts] streaming playback failed:', err)
-          releaseAudio()
+          clearSegmentUrl()
+          if (segment.retries < 1)
+            queue.unshift({ ...segment, retries: segment.retries + 1 })
         }
       }
     }
@@ -202,7 +210,7 @@ export function useTtsAudio() {
     if (!clean)
       return
 
-    queue.push({ text: clean, emotion })
+    queue.push({ text: clean, emotion, retries: 0 })
     void drainQueue(playToken)
   }
 
@@ -273,6 +281,8 @@ export function useTtsAudio() {
     lastSnapshot = ''
     playing = false
     releaseAudio()
+    audio = undefined
+    analyser = undefined
     live2d.setEmotion('idle')
   }
 
