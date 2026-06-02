@@ -3,8 +3,6 @@ import type { Application } from '@pixi/app'
 
 import { onBeforeUnmount, ref } from 'vue'
 
-import { Live2DExpressionController } from '@/live2d/expression-controller'
-
 export type Live2DState = 'placeholder' | 'loading' | 'mounted' | 'error'
 
 const DEFAULT_CUBISM_CORE_URL = 'https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js'
@@ -30,20 +28,26 @@ interface Live2DRuntime {
     destroy: () => void
     on?: (event: string, handler: (hitAreas: string[]) => void) => void
     motion?: (group: string, index?: number) => unknown
+    // pixi-live2d-display loads expressions declared in model3.json and applies them via
+    // internalModel.motionManager.expressionManager inside its own per-frame update loop.
     internalModel?: {
       coreModel?: {
         setParameterValueById?: (id: string, value: number) => void
         getParameterValueById?: (id: string) => number
       }
-      settings?: {
-        json?: object
+      motionManager?: {
+        expressionManager?: {
+          definitions?: Array<{ Name?: string }>
+          setExpression?: (id: string | number) => unknown
+          resetExpression?: () => void
+        }
       }
     }
   }
   modelSize?: { width: number, height: number }
   resizeObserver?: ResizeObserver
-  expressionController?: Live2DExpressionController
-  expressionTicker?: () => void
+  // Pending timer that clears a timed expression back to neutral.
+  expressionResetTimer?: ReturnType<typeof setTimeout>
 }
 
 function containerSize(container: HTMLElement) {
@@ -188,7 +192,7 @@ export function useLive2D(container: Ref<HTMLDivElement | undefined>) {
         width: Math.max(1, model.width),
         height: Math.max(1, model.height),
       }
-      expressionNames.value = await setupExpressions(runtime, url)
+      expressionNames.value = expressionNamesOf(runtime)
       fitModel(runtime, target)
 
       runtime.resizeObserver = new ResizeObserver(() => fitModel(runtime, target))
@@ -207,11 +211,10 @@ export function useLive2D(container: Ref<HTMLDivElement | undefined>) {
     runtime.resizeObserver?.disconnect()
     runtime.resizeObserver = undefined
 
-    if (runtime.expressionTicker && runtime.app)
-      runtime.app.ticker?.remove(runtime.expressionTicker)
-    runtime.expressionTicker = undefined
-    runtime.expressionController?.dispose()
-    runtime.expressionController = undefined
+    if (runtime.expressionResetTimer) {
+      clearTimeout(runtime.expressionResetTimer)
+      runtime.expressionResetTimer = undefined
+    }
     expressionNames.value = []
 
     if (runtime.model && runtime.app) {
@@ -257,12 +260,29 @@ export function useLive2D(container: Ref<HTMLDivElement | undefined>) {
     setParameter('ParamMouthOpenY', Math.min(1, Math.max(0, value)))
   }
 
-  function setExpression(name: string, durationMs?: number, intensity?: number): boolean {
-    return runtime.expressionController?.set(name, durationMs, intensity) ?? false
+  function clearExpressionTimer(): void {
+    if (runtime.expressionResetTimer) {
+      clearTimeout(runtime.expressionResetTimer)
+      runtime.expressionResetTimer = undefined
+    }
+  }
+
+  function setExpression(name: string, durationMs?: number): boolean {
+    const manager = runtime.model?.internalModel?.motionManager?.expressionManager
+    const target = name.trim()
+    if (!manager?.setExpression || !expressionNames.value.includes(target))
+      return false
+
+    clearExpressionTimer()
+    manager.setExpression(target)
+    if (durationMs && durationMs > 0)
+      runtime.expressionResetTimer = setTimeout(resetExpression, durationMs)
+    return true
   }
 
   function resetExpression(): void {
-    runtime.expressionController?.reset()
+    clearExpressionTimer()
+    runtime.model?.internalModel?.motionManager?.expressionManager?.resetExpression?.()
   }
 
   onBeforeUnmount(dispose)
@@ -281,23 +301,8 @@ export function useLive2D(container: Ref<HTMLDivElement | undefined>) {
   }
 }
 
-async function setupExpressions(runtime: Live2DRuntime, modelUrl: string): Promise<string[]> {
-  const coreModel = runtime.model?.internalModel?.coreModel
-  if (!coreModel)
-    return []
-
-  const controller = new Live2DExpressionController(coreModel)
-  const settingsJson = runtime.model?.internalModel?.settings?.json ?? await fetchSettingsJson(modelUrl)
-  const names = await controller.load(modelUrl, settingsJson)
-  runtime.expressionController = controller
-  runtime.expressionTicker = () => controller.applyFrame()
-  runtime.app?.ticker?.add(runtime.expressionTicker)
-  return names
-}
-
-async function fetchSettingsJson(modelUrl: string): Promise<object> {
-  const res = await fetch(modelUrl)
-  if (!res.ok)
-    throw new Error(`Live2D settings fetch failed: ${res.status}`)
-  return await res.json() as object
+// Names of the expressions pixi-live2d-display loaded from model3.json's FileReferences.Expressions.
+function expressionNamesOf(runtime: Live2DRuntime): string[] {
+  const defs = runtime.model?.internalModel?.motionManager?.expressionManager?.definitions ?? []
+  return defs.map(def => (def.Name ?? '').trim()).filter(Boolean)
 }

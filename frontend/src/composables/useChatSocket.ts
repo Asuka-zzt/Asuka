@@ -103,10 +103,12 @@ export function useChatSocket() {
         tts.stop()
       }
       else if (data.type === 'live2d.emotion') {
-        live2d.setEmotion(
-          data.emotion,
-          data.motion ? { group: data.motion } : undefined,
-        )
+        if (data.emotion) {
+          live2d.setEmotion(
+            data.emotion,
+            data.motion ? { group: data.motion } : undefined,
+          )
+        }
         if (data.expression) {
           live2d.setExpression({
             name: data.expression,

@@ -17,7 +17,7 @@ export type WsEvent =
   | { type: 'error', content: string }
   | {
     type: 'live2d.emotion'
-    emotion: EmotionType
+    emotion?: EmotionType
     motion?: string
     expression?: string
     durationMs?: number

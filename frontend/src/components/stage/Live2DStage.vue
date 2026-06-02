@@ -67,7 +67,7 @@ watch(expressionCommand, (command) => {
     resetExpression()
     return
   }
-  setExpression(command.name, command.durationMs, command.intensity)
+  setExpression(command.name, command.durationMs)
 }, { deep: true })
 
 watch(expressionNames, (names) => {
