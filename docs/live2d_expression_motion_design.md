@@ -322,3 +322,40 @@ export type Live2DFramePlugin = (ctx: Live2DFrameContext) => void
 - 阶段 1 不引入 `wlipsync`，先用 Web Audio 音量包络驱动口型。
 - 不做自然语言到骨骼动作生成。
 - 不修改原有设计文档，只以本文作为本次 Live2D 功能的追加设计。
+
+## 阶段 1.1：切块流式 TTS
+
+问题：阶段 1 在收到完整 `done` 后才调用 `/api/tts`，用户会先看到完整回复，再等待 TTS 合成和下载，语音响应明显滞后。
+
+目标：前端看到回复文本时尽快听到声音，不等待整段回复完成。
+
+约束：
+
+- 不做逐 token TTS。单字或短 token 会导致请求过多、声音断裂、语调不自然。
+- 前端按句子边界或最小长度切块，例如 `。！？!?；;` 或累计到约 48 字。
+- 每个切块进入 TTS 队列，按顺序播放，保证语音顺序与文字顺序一致。
+- 后端新增 `/api/tts/stream`，使用 `StreamingResponse` 透传 `edge-tts` 的 audio chunk。
+- 前端优先使用 MediaSource 边下载边播放 MP3；不支持 MediaSource 时降级为等待该切块下载完成后播放。
+- Live2D 口型仍只由真实音频播放驱动，不因 token 到达而假动。
+
+数据流：
+
+```text
+WS token
+  -> append assistant text
+  -> TTS chunker accumulates token text
+  -> sentence boundary / min length reached
+  -> enqueue chunk
+  -> GET/POST /api/tts/stream
+  -> MediaSource append audio/mpeg chunks
+  -> audio starts before full assistant message is done
+  -> Web Audio analyser drives ParamMouthOpenY
+```
+
+验收：
+
+- 首个句子或首个足够长片段出现后即可开始合成和播放。
+- 后续片段排队顺序播放，不互相覆盖。
+- `done` 时 flush 剩余文本。
+- 新消息发送时停止当前播放并清空旧队列。
+- TTS 失败只跳过当前片段，不影响文字流。

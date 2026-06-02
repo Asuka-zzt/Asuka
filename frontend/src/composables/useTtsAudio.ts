@@ -2,18 +2,63 @@ import type { EmotionType } from '@/types/live2d'
 
 import { onBeforeUnmount } from 'vue'
 
-import { postTts } from '@/api/client'
+import { postTts, postTtsStream } from '@/api/client'
 import { useLive2DStore } from '@/stores/live2d'
 
 interface AudioWindow extends Window {
   webkitAudioContext?: typeof AudioContext
 }
 
+interface QueuedSpeech {
+  text: string
+  emotion?: EmotionType
+}
+
+const CHUNK_BOUNDARY_RE = /[。！？!?；;]\s*/
+const EMOTION_TAG_RE = /\[emotion:(idle|think|happy|sad)\]\s*$/i
+const MIN_STREAM_CHARS = 48
+const MIME_MP3 = 'audio/mpeg'
+
 function createAudioContext(): AudioContext {
   const AudioContextCtor = window.AudioContext ?? (window as AudioWindow).webkitAudioContext
   if (!AudioContextCtor)
     throw new Error('AudioContext is not supported')
   return new AudioContextCtor()
+}
+
+function mediaSourceSupported(): boolean {
+  return typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported(MIME_MP3)
+}
+
+function waitForEvent(target: EventTarget, event: string): Promise<void> {
+  return new Promise((resolve) => {
+    target.addEventListener(event, () => resolve(), { once: true })
+  })
+}
+
+function appendBuffer(sourceBuffer: SourceBuffer, chunk: Uint8Array): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      sourceBuffer.removeEventListener('updateend', onUpdateEnd)
+      sourceBuffer.removeEventListener('error', onError)
+    }
+    const onUpdateEnd = () => {
+      cleanup()
+      resolve()
+    }
+    const onError = () => {
+      cleanup()
+      reject(new Error('source buffer append failed'))
+    }
+
+    sourceBuffer.addEventListener('updateend', onUpdateEnd, { once: true })
+    sourceBuffer.addEventListener('error', onError, { once: true })
+    sourceBuffer.appendBuffer(chunk)
+  })
+}
+
+function stripTrailingEmotionTag(text: string): string {
+  return text.replace(EMOTION_TAG_RE, '').trimEnd()
 }
 
 export function useTtsAudio() {
@@ -23,6 +68,9 @@ export function useTtsAudio() {
   let audioContext: AudioContext | undefined
   let raf = 0
   let playToken = 0
+  let pendingText = ''
+  let playing = false
+  const queue: QueuedSpeech[] = []
 
   function releaseAudio(): void {
     if (raf) {
@@ -61,67 +109,199 @@ export function useTtsAudio() {
     tick()
   }
 
-  async function playText(text: string, emotion: EmotionType = 'idle'): Promise<void> {
-    const trimmed = text.trim()
-    if (!trimmed)
+  async function prepareAudioElement(token: number): Promise<AnalyserNode> {
+    audio = new Audio()
+    audio.crossOrigin = 'anonymous'
+    audioContext ??= createAudioContext()
+    if (audioContext.state === 'suspended')
+      await audioContext.resume()
+
+    const source = audioContext.createMediaElementSource(audio)
+    const analyser = audioContext.createAnalyser()
+    analyser.fftSize = 512
+    analyser.smoothingTimeConstant = 0.55
+    source.connect(analyser)
+    analyser.connect(audioContext.destination)
+
+    audio.addEventListener('ended', () => {
+      if (token === playToken)
+        releaseAudio()
+    }, { once: true })
+    audio.addEventListener('error', () => {
+      if (token === playToken)
+        releaseAudio()
+    }, { once: true })
+
+    return analyser
+  }
+
+  async function playWithBlobFallback(text: string, token: number): Promise<void> {
+    const blob = await postTts(text)
+    if (token !== playToken)
       return
 
-    const token = ++playToken
-    releaseAudio()
-    live2d.setEmotion(emotion)
+    objectUrl = URL.createObjectURL(blob)
+    if (!audio)
+      return
+
+    audio.src = objectUrl
+    await audio.play()
+  }
+
+  async function playWithMediaSource(text: string, token: number): Promise<void> {
+    if (!audio)
+      return
+
+    const mediaSource = new MediaSource()
+    objectUrl = URL.createObjectURL(mediaSource)
+    audio.src = objectUrl
+    const opened = waitForEvent(mediaSource, 'sourceopen')
+    const response = await postTtsStream(text)
+    await opened
+    if (token !== playToken)
+      return
+
+    const sourceBuffer = mediaSource.addSourceBuffer(MIME_MP3)
+    const reader = response.body!.getReader()
+    let started = false
 
     try {
-      const blob = await postTts(trimmed)
-      if (token !== playToken)
-        return
+      while (token === playToken) {
+        const { value, done } = await reader.read()
+        if (done)
+          break
+        if (!value?.byteLength)
+          continue
 
-      objectUrl = URL.createObjectURL(blob)
-      audio = new Audio(objectUrl)
-      audio.crossOrigin = 'anonymous'
-
-      audioContext ??= createAudioContext()
-      if (audioContext.state === 'suspended')
-        await audioContext.resume()
-
-      const source = audioContext.createMediaElementSource(audio)
-      const analyser = audioContext.createAnalyser()
-      analyser.fftSize = 512
-      analyser.smoothingTimeConstant = 0.55
-      source.connect(analyser)
-      analyser.connect(audioContext.destination)
-
-      audio.addEventListener('ended', () => {
-        if (token === playToken) {
-          releaseAudio()
-          live2d.setEmotion('idle')
+        await appendBuffer(sourceBuffer, value)
+        if (!started && audio) {
+          started = true
+          await audio.play()
         }
-      }, { once: true })
-
-      audio.addEventListener('error', () => {
-        if (token === playToken) {
-          releaseAudio()
-          live2d.setEmotion('idle')
-        }
-      }, { once: true })
-
-      await audio.play()
-      if (token !== playToken)
-        return
-
-      live2d.setSpeaking(true)
-      analyse(analyser, token)
+      }
     }
-    catch (err) {
+    finally {
+      reader.releaseLock()
+      if (mediaSource.readyState === 'open')
+        mediaSource.endOfStream()
+    }
+  }
+
+  async function playQueuedSegment(segment: QueuedSpeech, token: number): Promise<void> {
+    releaseAudio()
+    if (segment.emotion)
+      live2d.setEmotion(segment.emotion)
+
+    const analyser = await prepareAudioElement(token)
+    if (token !== playToken)
+      return
+
+    live2d.setSpeaking(true)
+    analyse(analyser, token)
+
+    if (mediaSourceSupported())
+      await playWithMediaSource(segment.text, token)
+    else
+      await playWithBlobFallback(segment.text, token)
+
+    if (!audio)
+      return
+
+    if (!audio.ended)
+      await waitForEvent(audio, 'ended')
+  }
+
+  async function drainQueue(token: number): Promise<void> {
+    if (playing)
+      return
+
+    playing = true
+    try {
+      while (token === playToken && queue.length) {
+        const segment = queue.shift()
+        if (!segment)
+          continue
+
+        try {
+          await playQueuedSegment(segment, token)
+        }
+        catch (err) {
+          console.warn('[tts] streaming playback failed:', err)
+          releaseAudio()
+        }
+      }
+    }
+    finally {
+      playing = false
       if (token === playToken) {
-        console.warn('[tts] audio playback failed:', err)
         releaseAudio()
         live2d.setEmotion('idle')
       }
     }
   }
 
+  function enqueueText(text: string, emotion?: EmotionType): void {
+    const clean = stripTrailingEmotionTag(text).trim()
+    if (!clean)
+      return
+
+    queue.push({ text: clean, emotion })
+    void drainQueue(playToken)
+  }
+
+  function takeNextChunk(flush = false): string | undefined {
+    pendingText = stripTrailingEmotionTag(pendingText)
+    const trimmedStart = pendingText.trimStart()
+    pendingText = trimmedStart
+
+    const boundary = CHUNK_BOUNDARY_RE.exec(pendingText)
+    if (boundary?.index !== undefined) {
+      const end = boundary.index + boundary[0].length
+      const chunk = pendingText.slice(0, end)
+      pendingText = pendingText.slice(end)
+      return chunk
+    }
+
+    if (pendingText.length >= MIN_STREAM_CHARS) {
+      const chunk = pendingText.slice(0, MIN_STREAM_CHARS)
+      pendingText = pendingText.slice(MIN_STREAM_CHARS)
+      return chunk
+    }
+
+    if (flush && pendingText.trim()) {
+      const chunk = pendingText
+      pendingText = ''
+      return chunk
+    }
+
+    return undefined
+  }
+
+  function feedToken(tokenText: string): void {
+    pendingText += tokenText
+    let chunk = takeNextChunk()
+    while (chunk) {
+      enqueueText(chunk)
+      chunk = takeNextChunk()
+    }
+  }
+
+  function flush(emotion?: EmotionType): void {
+    let chunk = takeNextChunk(true)
+    while (chunk) {
+      enqueueText(chunk, emotion)
+      chunk = takeNextChunk(true)
+      emotion = undefined
+    }
+    if (emotion)
+      live2d.setEmotion(emotion)
+  }
+
   function stop(): void {
     playToken += 1
+    queue.length = 0
+    pendingText = ''
+    playing = false
     releaseAudio()
     live2d.setEmotion('idle')
   }
@@ -132,5 +312,5 @@ export function useTtsAudio() {
     audioContext = undefined
   })
 
-  return { playText, stop }
+  return { feedToken, flush, enqueueText, stop }
 }

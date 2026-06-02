@@ -51,14 +51,16 @@ export function useChatSocket() {
     }
     ws.onmessage = (e: MessageEvent) => {
       const data = JSON.parse(e.data as string) as WsEvent
-      if (data.type === 'token')
+      if (data.type === 'token') {
         store.appendToken(data.content)
+        tts.feedToken(data.content)
+      }
       else if (data.type === 'done') {
         const message = store.finalize()
         if (message?.content) {
           const parsed = parseEmotion(message.content)
           message.content = parsed.content
-          void tts.playText(parsed.content, parsed.emotion)
+          tts.flush(parsed.emotion)
         }
         else {
           live2d.setEmotion('idle')
