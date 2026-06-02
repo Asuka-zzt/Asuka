@@ -335,7 +335,8 @@ export type Live2DFramePlugin = (ctx: Live2DFrameContext) => void
 - 前端按句子边界或最小长度切块，例如 `。！？!?；;` 或累计到约 48 字。
 - 每个切块进入 TTS 队列，按顺序播放，保证语音顺序与文字顺序一致。
 - 后端新增 `/api/tts/stream`，使用 `StreamingResponse` 透传 `edge-tts` 的 audio chunk。
-- 前端优先使用 MediaSource 边下载边播放 MP3；不支持 MediaSource 时降级为等待该切块下载完成后播放。
+- 前端默认按切块完整 Blob 顺序播放，避免 MP3 MediaSource 在部分浏览器中只播放首个 frame 后卡住。
+- `/api/tts/stream` 保留为后续优化入口；只有确认浏览器与音频格式兼容后再启用 MediaSource 边下载边播放。
 - Live2D 口型仍只由真实音频播放驱动，不因 token 到达而假动。
 
 数据流：

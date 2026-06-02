@@ -2,7 +2,7 @@ import type { EmotionType } from '@/types/live2d'
 
 import { onBeforeUnmount } from 'vue'
 
-import { postTts, postTtsStream } from '@/api/client'
+import { postTts } from '@/api/client'
 import { useLive2DStore } from '@/stores/live2d'
 
 interface AudioWindow extends Window {
@@ -17,7 +17,6 @@ interface QueuedSpeech {
 const CHUNK_BOUNDARY_RE = /[。！？!?；;]\s*/
 const EMOTION_TAG_RE = /\[emotion:(idle|think|happy|sad)\]\s*$/i
 const MIN_STREAM_CHARS = 48
-const MIME_MP3 = 'audio/mpeg'
 
 function createAudioContext(): AudioContext {
   const AudioContextCtor = window.AudioContext ?? (window as AudioWindow).webkitAudioContext
@@ -26,34 +25,9 @@ function createAudioContext(): AudioContext {
   return new AudioContextCtor()
 }
 
-function mediaSourceSupported(): boolean {
-  return typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported(MIME_MP3)
-}
-
 function waitForEvent(target: EventTarget, event: string): Promise<void> {
   return new Promise((resolve) => {
     target.addEventListener(event, () => resolve(), { once: true })
-  })
-}
-
-function appendBuffer(sourceBuffer: SourceBuffer, chunk: Uint8Array): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const cleanup = () => {
-      sourceBuffer.removeEventListener('updateend', onUpdateEnd)
-      sourceBuffer.removeEventListener('error', onError)
-    }
-    const onUpdateEnd = () => {
-      cleanup()
-      resolve()
-    }
-    const onError = () => {
-      cleanup()
-      reject(new Error('source buffer append failed'))
-    }
-
-    sourceBuffer.addEventListener('updateend', onUpdateEnd, { once: true })
-    sourceBuffer.addEventListener('error', onError, { once: true })
-    sourceBuffer.appendBuffer(chunk)
   })
 }
 
@@ -135,7 +109,7 @@ export function useTtsAudio() {
     return analyser
   }
 
-  async function playWithBlobFallback(text: string, token: number): Promise<void> {
+  async function playWithBlob(text: string, token: number): Promise<void> {
     const blob = await postTts(text)
     if (token !== playToken)
       return
@@ -146,45 +120,6 @@ export function useTtsAudio() {
 
     audio.src = objectUrl
     await audio.play()
-  }
-
-  async function playWithMediaSource(text: string, token: number): Promise<void> {
-    if (!audio)
-      return
-
-    const mediaSource = new MediaSource()
-    objectUrl = URL.createObjectURL(mediaSource)
-    audio.src = objectUrl
-    const opened = waitForEvent(mediaSource, 'sourceopen')
-    const response = await postTtsStream(text)
-    await opened
-    if (token !== playToken)
-      return
-
-    const sourceBuffer = mediaSource.addSourceBuffer(MIME_MP3)
-    const reader = response.body!.getReader()
-    let started = false
-
-    try {
-      while (token === playToken) {
-        const { value, done } = await reader.read()
-        if (done)
-          break
-        if (!value?.byteLength)
-          continue
-
-        await appendBuffer(sourceBuffer, value)
-        if (!started && audio) {
-          started = true
-          await audio.play()
-        }
-      }
-    }
-    finally {
-      reader.releaseLock()
-      if (mediaSource.readyState === 'open')
-        mediaSource.endOfStream()
-    }
   }
 
   async function playQueuedSegment(segment: QueuedSpeech, token: number): Promise<void> {
@@ -199,10 +134,7 @@ export function useTtsAudio() {
     live2d.setSpeaking(true)
     analyse(analyser, token)
 
-    if (mediaSourceSupported())
-      await playWithMediaSource(segment.text, token)
-    else
-      await playWithBlobFallback(segment.text, token)
+    await playWithBlob(segment.text, token)
 
     if (!audio)
       return
