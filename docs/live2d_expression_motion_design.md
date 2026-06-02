@@ -291,6 +291,12 @@ export type Live2DFramePlugin = (ctx: Live2DFrameContext) => void
 - 调用 `setExpression('ku')` 后对应参数被写入。
 - duration 到期后参数回到默认值。
 
+补充实现策略：
+
+- 前端自管 `.exp3.json` controller，加载 `model3.json` 中的 `FileReferences.Expressions`，缺失文件跳过并 warning。
+- 支持尾部控制标签 `[expression:ku]`，可与 `[emotion:happy]` 任意顺序共存；标签从显示文本和 TTS 文本中移除。
+- WS `live2d.emotion` 事件的 `expression` 字段会触发表情，未指定 duration 时默认持续约 1.8 秒。
+
 ### 阶段 3：结构化 WS 指令
 
 改动范围：

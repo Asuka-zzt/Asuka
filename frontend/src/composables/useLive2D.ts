@@ -3,6 +3,8 @@ import type { Application } from '@pixi/app'
 
 import { onBeforeUnmount, ref } from 'vue'
 
+import { Live2DExpressionController } from '@/live2d/expression-controller'
+
 export type Live2DState = 'placeholder' | 'loading' | 'mounted' | 'error'
 
 const DEFAULT_CUBISM_CORE_URL = 'https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js'
@@ -31,11 +33,17 @@ interface Live2DRuntime {
     internalModel?: {
       coreModel?: {
         setParameterValueById?: (id: string, value: number) => void
+        getParameterValueById?: (id: string) => number
+      }
+      settings?: {
+        json?: object
       }
     }
   }
   modelSize?: { width: number, height: number }
   resizeObserver?: ResizeObserver
+  expressionController?: Live2DExpressionController
+  expressionTicker?: () => void
 }
 
 function containerSize(container: HTMLElement) {
@@ -76,6 +84,7 @@ function fitModel(runtime: Live2DRuntime, container: HTMLElement) {
 export function useLive2D(container: Ref<HTMLDivElement | undefined>) {
   const state = ref<Live2DState>('placeholder')
   const error = ref('')
+  const expressionNames = ref<string[]>([])
   const runtime: Live2DRuntime = {}
   let mountToken = 0
   let cubismCorePromise: Promise<void> | undefined
@@ -179,6 +188,7 @@ export function useLive2D(container: Ref<HTMLDivElement | undefined>) {
         width: Math.max(1, model.width),
         height: Math.max(1, model.height),
       }
+      expressionNames.value = await setupExpressions(runtime, url)
       fitModel(runtime, target)
 
       runtime.resizeObserver = new ResizeObserver(() => fitModel(runtime, target))
@@ -196,6 +206,13 @@ export function useLive2D(container: Ref<HTMLDivElement | undefined>) {
     mountToken += 1
     runtime.resizeObserver?.disconnect()
     runtime.resizeObserver = undefined
+
+    if (runtime.expressionTicker && runtime.app)
+      runtime.app.ticker?.remove(runtime.expressionTicker)
+    runtime.expressionTicker = undefined
+    runtime.expressionController?.dispose()
+    runtime.expressionController = undefined
+    expressionNames.value = []
 
     if (runtime.model && runtime.app) {
       try {
@@ -240,7 +257,47 @@ export function useLive2D(container: Ref<HTMLDivElement | undefined>) {
     setParameter('ParamMouthOpenY', Math.min(1, Math.max(0, value)))
   }
 
+  function setExpression(name: string, durationMs?: number, intensity?: number): boolean {
+    return runtime.expressionController?.set(name, durationMs, intensity) ?? false
+  }
+
+  function resetExpression(): void {
+    runtime.expressionController?.reset()
+  }
+
   onBeforeUnmount(dispose)
 
-  return { state, error, mount, dispose, playMotion, setParameter, setMouthOpen }
+  return {
+    state,
+    error,
+    expressionNames,
+    mount,
+    dispose,
+    playMotion,
+    setParameter,
+    setMouthOpen,
+    setExpression,
+    resetExpression,
+  }
+}
+
+async function setupExpressions(runtime: Live2DRuntime, modelUrl: string): Promise<string[]> {
+  const coreModel = runtime.model?.internalModel?.coreModel
+  if (!coreModel)
+    return []
+
+  const controller = new Live2DExpressionController(coreModel)
+  const settingsJson = runtime.model?.internalModel?.settings?.json ?? await fetchSettingsJson(modelUrl)
+  const names = await controller.load(modelUrl, settingsJson)
+  runtime.expressionController = controller
+  runtime.expressionTicker = () => controller.applyFrame()
+  runtime.app?.ticker?.add(runtime.expressionTicker)
+  return names
+}
+
+async function fetchSettingsJson(modelUrl: string): Promise<object> {
+  const res = await fetch(modelUrl)
+  if (!res.ok)
+    throw new Error(`Live2D settings fetch failed: ${res.status}`)
+  return await res.json() as object
 }

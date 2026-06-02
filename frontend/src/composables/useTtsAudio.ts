@@ -22,6 +22,7 @@ type TtsBlobResult =
 
 const CHUNK_BOUNDARY_RE = /[。！？!?；;]\s*/
 const EMOTION_TAG_RE = /\[emotion:(idle|think|happy|sad)\]\s*$/i
+const CONTROL_TAG_RE = /\[(?:emotion|expression):[^\]]+\]/gi
 const EMOJI_RE = /[\p{Extended_Pictographic}\uFE0F\u200D\u20E3]/gu
 const URL_RE = /https?:\/\/\S+/gi
 const FIRST_CHUNK_CHARS = 18
@@ -46,6 +47,7 @@ function stripTrailingEmotionTag(text: string): string {
 
 function cleanForSpeech(text: string): string {
   return stripTrailingEmotionTag(text)
+    .replace(CONTROL_TAG_RE, ' ')
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/`([^`]+)`/g, '$1')
     .replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1')

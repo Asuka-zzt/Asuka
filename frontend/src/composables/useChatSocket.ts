@@ -8,15 +8,40 @@ import { useChatStore } from '@/stores/chat'
 import { useLive2DStore } from '@/stores/live2d'
 
 const EMOTION_TAG_RE = /\[emotion:(idle|think|happy|sad)\]\s*$/i
+const EXPRESSION_TAG_RE = /\[expression:([A-Za-z0-9_. -]+)\]\s*$/i
+const DEFAULT_EXPRESSION_DURATION_MS = 1800
 
-function parseEmotion(content: string): { content: string, emotion: EmotionType } {
-  const match = content.match(EMOTION_TAG_RE)
-  if (!match)
-    return { content, emotion: 'idle' }
+function parseVisualTags(content: string): {
+  content: string
+  emotion: EmotionType
+  expression?: string
+} {
+  let cleanContent = content
+  let emotion: EmotionType | undefined
+  let expression: string | undefined
+
+  while (true) {
+    const expressionMatch = cleanContent.match(EXPRESSION_TAG_RE)
+    if (expressionMatch) {
+      expression = expressionMatch[1]?.trim() || expression
+      cleanContent = cleanContent.slice(0, expressionMatch.index).trimEnd()
+      continue
+    }
+
+    const emotionMatch = cleanContent.match(EMOTION_TAG_RE)
+    if (emotionMatch) {
+      emotion = emotionMatch[1]?.toLowerCase() as EmotionType
+      cleanContent = cleanContent.slice(0, emotionMatch.index).trimEnd()
+      continue
+    }
+
+    break
+  }
 
   return {
-    content: content.slice(0, match.index).trimEnd(),
-    emotion: match[1].toLowerCase() as EmotionType,
+    content: cleanContent,
+    emotion: emotion ?? 'idle',
+    expression,
   }
 }
 
@@ -59,8 +84,14 @@ export function useChatSocket() {
       else if (data.type === 'done') {
         const message = store.finalize()
         if (message?.content) {
-          const parsed = parseEmotion(message.content)
+          const parsed = parseVisualTags(message.content)
           message.content = parsed.content
+          if (parsed.expression) {
+            live2d.setExpression({
+              name: parsed.expression,
+              durationMs: DEFAULT_EXPRESSION_DURATION_MS,
+            })
+          }
           tts.flush(parsed.emotion)
         }
         else {
@@ -76,6 +107,13 @@ export function useChatSocket() {
           data.emotion,
           data.motion ? { group: data.motion } : undefined,
         )
+        if (data.expression) {
+          live2d.setExpression({
+            name: data.expression,
+            durationMs: data.durationMs ?? DEFAULT_EXPRESSION_DURATION_MS,
+            intensity: data.intensity,
+          })
+        }
       }
     }
   }

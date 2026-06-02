@@ -11,8 +11,18 @@ const props = defineProps<{ modelUrl?: string }>()
 const stageRef = ref<HTMLDivElement>()
 const configuredModelUrl = computed(() => props.modelUrl ?? import.meta.env.VITE_LIVE2D_MODEL_URL ?? '')
 const live2dStore = useLive2DStore()
-const { motionCommand, mouthOpen } = storeToRefs(live2dStore)
-const { state, error, mount, dispose, playMotion, setMouthOpen } = useLive2D(stageRef)
+const { motionCommand, expressionCommand, mouthOpen } = storeToRefs(live2dStore)
+const {
+  state,
+  error,
+  expressionNames,
+  mount,
+  dispose,
+  playMotion,
+  setMouthOpen,
+  setExpression,
+  resetExpression,
+} = useLive2D(stageRef)
 
 function playCurrentMotion(): void {
   const command = motionCommand.value
@@ -34,8 +44,10 @@ watch(configuredModelUrl, (modelUrl) => {
 })
 
 watch(state, (nextState) => {
-  if (nextState === 'mounted')
+  if (nextState === 'mounted') {
     playCurrentMotion()
+    live2dStore.setAvailableExpressions(expressionNames.value)
+  }
 })
 
 watch(motionCommand, () => {
@@ -46,6 +58,20 @@ watch(motionCommand, () => {
 watch(mouthOpen, (value) => {
   if (state.value === 'mounted')
     setMouthOpen(value)
+})
+
+watch(expressionCommand, (command) => {
+  if (state.value !== 'mounted')
+    return
+  if (!command) {
+    resetExpression()
+    return
+  }
+  setExpression(command.name, command.durationMs, command.intensity)
+}, { deep: true })
+
+watch(expressionNames, (names) => {
+  live2dStore.setAvailableExpressions(names)
 })
 </script>
 

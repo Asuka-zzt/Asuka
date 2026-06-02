@@ -27,6 +27,7 @@ export const useLive2DStore = defineStore('live2d', () => {
     group: motionGroupForEmotion('idle'),
   })
   const expressionCommand = ref<Live2DExpressionCommand>()
+  const availableExpressions = ref<string[]>([])
   const speaking = ref(false)
   const mouthOpen = ref(0)
 
@@ -53,6 +54,10 @@ export const useLive2DStore = defineStore('live2d', () => {
     expressionCommand.value = command
   }
 
+  function setAvailableExpressions(names: string[]): void {
+    availableExpressions.value = names
+  }
+
   function clearInstruction(): void {
     setExpression(undefined)
     setSpeaking(false)
@@ -63,6 +68,7 @@ export const useLive2DStore = defineStore('live2d', () => {
     emotion,
     motionCommand,
     expressionCommand,
+    availableExpressions,
     speaking,
     mouthOpen,
     setEmotion,
@@ -70,6 +76,7 @@ export const useLive2DStore = defineStore('live2d', () => {
     setSpeaking,
     setMouthOpen,
     setExpression,
+    setAvailableExpressions,
     clearInstruction,
   }
 })
