@@ -30,18 +30,20 @@ export const useChatStore = defineStore('chat', () => {
     return messages.value.find(m => m.id === streamingId)
   }
 
-  function appendToken(token: string) {
+  function appendToken(token: string): Message | undefined {
     const m = current()
     if (m)
       m.content += token
+    return m
   }
 
-  function finalize() {
+  function finalize(): Message | undefined {
     const m = current()
     if (m)
       m.streaming = false
     streamingId = null
     sending.value = false
+    return m
   }
 
   function setError(msg: string) {

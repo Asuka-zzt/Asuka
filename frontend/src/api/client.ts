@@ -56,3 +56,27 @@ export async function generateWiki(
     throw new Error(await errorMessage(res, `generate_wiki ${res.status}`))
   return res.json() as Promise<GenerateWikiResponse>
 }
+
+export async function postTts(text: string, voice?: string): Promise<Blob> {
+  const res = await fetch(`${apiBase}/api/tts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, voice }),
+  })
+  if (!res.ok)
+    throw new Error(await errorMessage(res, `tts ${res.status}`))
+  return res.blob()
+}
+
+export async function postTtsStream(text: string, voice?: string): Promise<Response> {
+  const res = await fetch(`${apiBase}/api/tts/stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, voice }),
+  })
+  if (!res.ok)
+    throw new Error(await errorMessage(res, `tts stream ${res.status}`))
+  if (!res.body)
+    throw new Error('tts stream response has no body')
+  return res
+}

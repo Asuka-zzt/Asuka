@@ -35,6 +35,13 @@ class Settings(BaseSettings):
     wiki_max_file_size: int = 100_000  # 单文件字节上限，超出跳过
     wiki_max_abstractions: int = 10  # 识别核心抽象数量上限
 
+    # TTS
+    tts_voice: str = "zh-CN-XiaoxiaoNeural"
+    tts_rate: str = "+0%"
+    tts_volume: str = "+0%"
+    tts_pitch: str = "+0Hz"
+    tts_max_chars: int = 1200
+
 
 @lru_cache
 def get_settings() -> Settings:
