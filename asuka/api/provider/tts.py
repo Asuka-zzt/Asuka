@@ -5,7 +5,7 @@ from typing import Any, cast
 
 import edge_tts
 
-from asukabot.config import get_settings
+from asuka.config import get_settings
 
 
 async def iter_speech_chunks(text: str, voice: str | None = None) -> AsyncIterator[bytes]:

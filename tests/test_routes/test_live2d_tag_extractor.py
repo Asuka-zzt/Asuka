@@ -8,7 +8,7 @@
 
 from collections.abc import Iterable
 
-from asukabot.routes.ws import Live2DTagExtractor
+from asuka.routes.ws import Live2DTagExtractor
 
 
 def _run(chunks: Iterable[str]) -> tuple[str, list[dict]]:

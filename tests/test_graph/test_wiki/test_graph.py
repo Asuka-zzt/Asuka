@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from asukabot.core.graph.wiki import build_wiki_graph
+from asuka.core.graph.wiki import build_wiki_graph
 from tests.conftest import FakeWikiLLM
 
 

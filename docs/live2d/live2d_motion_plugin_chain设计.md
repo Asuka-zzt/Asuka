@@ -39,7 +39,7 @@
 
 **不做（登记后续）：**
 - 自研 expression controller（读 exp3、Add/Multiply/Overwrite blend、auto-reset）——阶段3 已用 SDK 内置，本期不替换（见 §7 权衡）。
-- beat sync（节拍驱动头部）——AIRI 有，AsukaBot 无音乐场景，跳过。
+- beat sync（节拍驱动头部）——AIRI 有，Asuka 无音乐场景，跳过。
 - 鼠标坐标眼动接管——`autoInteract` 已提供鼠标 focus，本期只补 idle 兜底，不重写鼠标 focus（见 §7）。
 - 表情/动作配置 UI、模型导入校验——研究文档差距 7/8，属另一阶段。
 

@@ -2,7 +2,7 @@
 
 from langchain_core.language_models.chat_models import BaseChatModel
 
-from asukabot.config import get_settings
+from asuka.config import get_settings
 
 
 def get_llm(model_id: str) -> BaseChatModel:

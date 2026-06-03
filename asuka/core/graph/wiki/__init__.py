@@ -9,7 +9,7 @@ from typing import Any
 
 from langgraph.graph import END, START, StateGraph
 
-from asukabot.core.graph.wiki.nodes import (
+from asuka.core.graph.wiki.nodes import (
     analyze_relationships,
     combine_tutorial,
     fan_out_chapters,
@@ -18,7 +18,7 @@ from asukabot.core.graph.wiki.nodes import (
     order_chapters,
     write_chapter,
 )
-from asukabot.core.graph.wiki.state import WikiState
+from asuka.core.graph.wiki.state import WikiState
 
 _graph: Any | None = None
 

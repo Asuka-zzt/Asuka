@@ -5,8 +5,8 @@ from typing import Any
 
 import pytest
 
-from asukabot.core.tools import get_tools_for_agent
-from asukabot.core.tools.wiki_generator import generate_wiki
+from asuka.core.tools import get_tools_for_agent
+from asuka.core.tools.wiki_generator import generate_wiki
 
 
 def test_registry_contains_wiki() -> None:
@@ -27,7 +27,7 @@ async def test_generate_wiki_tool(
         ainvoke = staticmethod(fake_ainvoke)
 
     monkeypatch.setattr(
-        "asukabot.core.tools.wiki_generator.build_wiki_graph", lambda: FakeGraph()
+        "asuka.core.tools.wiki_generator.build_wiki_graph", lambda: FakeGraph()
     )
     result = await generate_wiki.ainvoke({"project_path": str(tmp_path)})
     assert "已生成 Wiki" in result

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from asukabot.core.graph.wiki.fs import collect_files, write_wiki
+from asuka.core.graph.wiki.fs import collect_files, write_wiki
 
 
 def test_collect_files_filters(sample_project: Path) -> None:

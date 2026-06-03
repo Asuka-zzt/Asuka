@@ -9,10 +9,10 @@ from typing import Any
 
 from langchain.agents import create_agent
 
-from asukabot.api.provider import get_llm
-from asukabot.core.agent.model import AgentConfig, default_agent
-from asukabot.core.graph.checkpointer import get_checkpointer
-from asukabot.core.tools import get_tools_for_agent
+from asuka.api.provider import get_llm
+from asuka.core.agent.model import AgentConfig, default_agent
+from asuka.core.graph.checkpointer import get_checkpointer
+from asuka.core.tools import get_tools_for_agent
 
 _agent: Any | None = None
 

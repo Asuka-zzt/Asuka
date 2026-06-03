@@ -12,7 +12,7 @@
 ## 2. 新增文件与职责
 
 ```
-asukabot/
+asuka/
 ├── api/provider/__init__.py     get_llm(model_id) → BaseChatModel
 ├── core/agent/model.py          AgentConfig（Pydantic）
 ├── core/graph/dispatch.py       build_agent() → create_react_agent
@@ -146,7 +146,7 @@ WS /ws/conv-123  ← {"message": "你好"}
 前置：`.env` 配置 `DEEPSEEK_API_KEY`。
 
 ```bash
-uv run python -m asukabot.main      # 启动
+uv run python -m asuka.main      # 启动
 # 用 wscat / Python 客户端连 ws://127.0.0.1:8000/ws/test-conv
 > {"message": "你好，记住我的幸运数字是 7"}
 < 流式 token... done

@@ -15,7 +15,7 @@ from typing import Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from langchain_core.messages import HumanMessage
 
-from asukabot.core.graph.dispatch import build_agent
+from asuka.core.graph.dispatch import build_agent
 
 router = APIRouter()
 

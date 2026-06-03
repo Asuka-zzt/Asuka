@@ -10,11 +10,11 @@ from typing import Any
 
 from langgraph.types import Send
 
-from asukabot.api.provider import get_llm
-from asukabot.config import get_settings
-from asukabot.core.graph.wiki import prompts
-from asukabot.core.graph.wiki.fs import collect_files, write_wiki
-from asukabot.core.graph.wiki.state import (
+from asuka.api.provider import get_llm
+from asuka.config import get_settings
+from asuka.core.graph.wiki import prompts
+from asuka.core.graph.wiki.fs import collect_files, write_wiki
+from asuka.core.graph.wiki.state import (
     ChapterDraft,
     IdentifyResult,
     OrderResult,
@@ -255,7 +255,7 @@ def combine_tutorial(state: WikiState) -> dict[str, Any]:
     relationships = state["relationships"]
     drafts = {c["chapter_num"]: c["content"] for c in state.get("chapters", [])}
 
-    attribution = "\n\n---\n\n由 AsukaBot Wiki 生成器自动生成"
+    attribution = "\n\n---\n\n由 Asuka Wiki 生成器自动生成"
 
     index = f"# 教程：{state['project_name']}\n\n{relationships['summary']}\n\n"
     index += "```mermaid\n" + _mermaid(abstractions, relationships["details"]) + "\n```\n\n"

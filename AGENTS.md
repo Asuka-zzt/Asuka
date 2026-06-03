@@ -2,7 +2,7 @@
 
 ## 1. Project Overview
 
-AsukaBot — 以"多人格 Agent 共存"为核心差异化的 AI 聊天应用。  
+Asuka — 以"多人格 Agent 共存"为核心差异化的 AI 聊天应用。  
 用户配置多个独立人格的 Agent，同一消息并发触发多 Agent 回应，配合 Prompt 可视化、三层记忆、插件扩展与 Live2D 虚拟形象。
 
 ---
@@ -25,11 +25,9 @@ AsukaBot — 以"多人格 Agent 共存"为核心差异化的 AI 聊天应用。
 
 ## 3. Architecture
 
-参考 **AstrBot**（`api/core/` 分层）× **TradingAgents**（`graph/agents/` 模式）× **AIRI**（`apps/packages/` 前端）。
-
 ```
-AsukaBot/
-├── asukabot/                   # Python 主包
+Asuka/
+├── asuka/                   # Python 主包
 │   ├── main.py                 # FastAPI 入口 + uvicorn 启动
 │   ├── config.py               # pydantic-settings 全局配置
 │   │
@@ -139,7 +137,7 @@ WebSocket 消息
 做功能前严格按以下顺序：
 
 1. **读文件**：先读相关文档，确认涉及模块与当前阶段。
-2. **写设计**：在 `docs/` 下补充或更新对应功能的设计文档，明确接口与数据流后再动手。(停下等用户确认)
+2. **写设计**：在 `docs/` 下对应的文件夹下补充或更新对应功能的设计文档，明确接口与数据流后再动手。(停下等用户确认)
 3. **切分支**：切换到开发分支（`feat/xxx`）再写实现代码，禁止直接在 `main` 上开发。
 4. **写实现**：确认 LangChain/LangGraph 框架内置方案优先复用；在 `core/` 写实现，在 `routes/` 接入。
 5. **写测试**：在 `tests/` 补测试，`uv run pytest` 全绿后提交。
@@ -152,9 +150,9 @@ WebSocket 消息
 uv sync                              # 安装/更新依赖
 uv run pytest                        # 全量测试
 uv run pytest tests/test_graph/ -v   # 单模块
-uv run ruff check asukabot/          # lint
-uv run mypy asukabot/                # 类型检查
-uv run python -m asukabot.main       # 启动开发服务
+uv run ruff check asuka/          # lint
+uv run mypy asuka/                # 类型检查
+uv run python -m asuka.main       # 启动开发服务
 ```
 
 验收标准：pytest 全绿 + ruff 无 error + mypy 无 error。  
@@ -173,7 +171,7 @@ LLM 调用在测试中用 `FakeListChatModel` mock，不发真实请求。
 
 ## 8. Important Constraints
 
-- `docs/` 只读，不修改设计文档。
+- `docs/` 只读，不修改设计文档,只以追加的方式添加相关说明。
 - API Key 只从环境变量读取（`config.py` pydantic-settings）。
 - 插件执行必须通过 `plugins/sandbox.py`，不得直接 `exec()`。
 - `git push --force`、`git reset --hard`、清空向量库，需用户二次确认。

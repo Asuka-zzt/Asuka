@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 from langchain_core.messages import AIMessage
 
-from asukabot.core.graph.wiki.state import (
+from asuka.core.graph.wiki.state import (
     Abstraction,
     IdentifyResult,
     OrderResult,
@@ -76,6 +76,6 @@ def patch_wiki_llm(
 ) -> Iterator[FakeWikiLLM]:
     """把 wiki 节点里的 get_llm 替换成返回假 LLM。"""
     monkeypatch.setattr(
-        "asukabot.core.graph.wiki.nodes.get_llm", lambda _model_id: fake_llm
+        "asuka.core.graph.wiki.nodes.get_llm", lambda _model_id: fake_llm
     )
     yield fake_llm

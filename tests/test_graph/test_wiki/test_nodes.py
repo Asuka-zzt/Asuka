@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from asukabot.core.graph.wiki import nodes
-from asukabot.core.graph.wiki.state import WikiState
+from asuka.core.graph.wiki import nodes
+from asuka.core.graph.wiki.state import WikiState
 from tests.conftest import FakeWikiLLM
 
 FILES = [("core.py", "def run(): ..."), ("util.py", "def helper(): ...")]
