@@ -1,5 +1,6 @@
 // REST 封装：对齐后端 main.py / routes/chat.py。默认走 Vite proxy（相对路径）。
 import type { GenerateWikiRequest, GenerateWikiResponse } from '@/types/wiki'
+import type { LanguageCode } from '@/types/language'
 
 const apiBase = import.meta.env.VITE_API_BASE ?? ''
 
@@ -57,22 +58,22 @@ export async function generateWiki(
   return res.json() as Promise<GenerateWikiResponse>
 }
 
-export async function postTts(text: string, voice?: string): Promise<Blob> {
+export async function postTts(text: string, voice?: string, language?: LanguageCode): Promise<Blob> {
   const res = await fetch(`${apiBase}/api/tts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, voice }),
+    body: JSON.stringify({ text, voice, language }),
   })
   if (!res.ok)
     throw new Error(await errorMessage(res, `tts ${res.status}`))
   return res.blob()
 }
 
-export async function postTtsStream(text: string, voice?: string): Promise<Response> {
+export async function postTtsStream(text: string, voice?: string, language?: LanguageCode): Promise<Response> {
   const res = await fetch(`${apiBase}/api/tts/stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, voice }),
+    body: JSON.stringify({ text, voice, language }),
   })
   if (!res.ok)
     throw new Error(await errorMessage(res, `tts stream ${res.status}`))

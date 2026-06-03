@@ -9,12 +9,15 @@
   - 对应的 token 内容会被清理，不下发标签文字
 """
 
+import json
 import re
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from langchain_core.messages import HumanMessage
+from pydantic import BaseModel
 
+from asuka.core.agent.presets import resolve_agent_config
 from asuka.core.graph.dispatch import build_agent
 
 router = APIRouter()
@@ -22,6 +25,40 @@ router = APIRouter()
 # 表情控制标签正则（支持大小写，表情名允许常见字符）
 EMOTION_RE = re.compile(r"\[emotion:(idle|think|happy|sad)\]", re.IGNORECASE)
 EXPRESSION_RE = re.compile(r"\[expression:([A-Za-z0-9_. -]+)\]", re.IGNORECASE)
+
+LANGUAGE_TOOL_NAMES = {"correct_text", "generate_quiz"}
+
+
+def _jsonable_tool_payload(output: Any) -> Any:
+    """把 LangChain tool output 转为可下发 JSON 的 payload。"""
+    content = getattr(output, "content", None)
+    if isinstance(content, str):
+        try:
+            decoded = json.loads(content)
+        except json.JSONDecodeError:
+            return {"content": content}
+        if isinstance(decoded, (list, dict)):
+            return decoded
+        return {"content": content}
+    if isinstance(content, (list, dict)):
+        return content
+    if isinstance(output, BaseModel):
+        return output.model_dump()
+    if isinstance(output, dict):
+        return output
+    return {"content": str(output)}
+
+
+def _tool_name(event: dict[str, Any]) -> str | None:
+    name = event.get("name")
+    if isinstance(name, str):
+        return name
+    data = event.get("data")
+    if isinstance(data, dict):
+        data_name = data.get("name")
+        if isinstance(data_name, str):
+            return data_name
+    return None
 
 
 class Live2DTagExtractor:
@@ -133,7 +170,6 @@ async def ws_chat(websocket: WebSocket, conversation_id: str) -> None:
     后端会实时提取标签并发出结构化事件，同时保证下发的 token 干净。
     """
     await websocket.accept()
-    agent = await build_agent()
     config = {"configurable": {"thread_id": conversation_id}}
 
     try:
@@ -142,6 +178,16 @@ async def ws_chat(websocket: WebSocket, conversation_id: str) -> None:
             message = data.get("message", "")
             if not message:
                 continue
+            try:
+                agent_cfg = resolve_agent_config(
+                    data.get("persona_id"),
+                    data.get("level"),
+                )
+            except ValueError as exc:
+                await websocket.send_json({"type": "error", "content": str(exc)})
+                continue
+
+            agent = await build_agent(agent_cfg)
 
             extractor = Live2DTagExtractor()
 
@@ -161,6 +207,18 @@ async def ws_chat(websocket: WebSocket, conversation_id: str) -> None:
                             await websocket.send_json(
                                 {"type": "token", "content": clean}
                             )
+                elif event["event"] == "on_tool_end":
+                    name = _tool_name(event)
+                    if name in LANGUAGE_TOOL_NAMES:
+                        await websocket.send_json(
+                            {
+                                "type": "tool.result",
+                                "name": name,
+                                "payload": _jsonable_tool_payload(
+                                    event.get("data", {}).get("output")
+                                ),
+                            }
+                        )
 
             # 结束时 flush 剩余干净文字（理论上不应有未闭合标签）
             remaining = extractor.flush()

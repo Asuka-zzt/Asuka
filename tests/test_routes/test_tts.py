@@ -13,11 +13,19 @@ from asuka.routes import tts
 def tts_app(monkeypatch: pytest.MonkeyPatch) -> Iterator[FastAPI]:
     """Build a TTS-only app with provider synthesis mocked."""
 
-    async def fake_synthesize(text: str, voice: str | None = None) -> bytes:
-        return f"audio:{voice or 'default'}:{text}".encode()
+    async def fake_synthesize(
+        text: str,
+        voice: str | None = None,
+        language: str | None = None,
+    ) -> bytes:
+        return f"audio:{voice or language or 'default'}:{text}".encode()
 
-    async def fake_iter_chunks(text: str, voice: str | None = None) -> AsyncIterator[bytes]:
-        yield f"chunk1:{voice or 'default'}:".encode()
+    async def fake_iter_chunks(
+        text: str,
+        voice: str | None = None,
+        language: str | None = None,
+    ) -> AsyncIterator[bytes]:
+        yield f"chunk1:{voice or language or 'default'}:".encode()
         yield text.encode()
 
     monkeypatch.setattr(tts.tts_provider, "synthesize_speech", fake_synthesize)
@@ -39,6 +47,21 @@ def test_tts_route_returns_audio(tts_app: FastAPI) -> None:
 def test_tts_route_rejects_blank_text(tts_app: FastAPI) -> None:
     client = TestClient(tts_app)
     response = client.post("/api/tts", json={"text": "   "})
+
+    assert response.status_code == 422
+
+
+def test_tts_route_accepts_language(tts_app: FastAPI) -> None:
+    client = TestClient(tts_app)
+    response = client.post("/api/tts", json={"text": "hello", "language": "english"})
+
+    assert response.status_code == 200
+    assert response.content == b"audio:english:hello"
+
+
+def test_tts_route_rejects_invalid_language(tts_app: FastAPI) -> None:
+    client = TestClient(tts_app)
+    response = client.post("/api/tts", json={"text": "hello", "language": "korean"})
 
     assert response.status_code == 422
 

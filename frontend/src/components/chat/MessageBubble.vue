@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import type { Message } from '@/types/chat'
 
+import CorrectionCard from '@/components/language/CorrectionCard.vue'
+import QuizCard from '@/components/language/QuizCard.vue'
+
 defineProps<{ message: Message }>()
 </script>
 
@@ -9,6 +12,12 @@ defineProps<{ message: Message }>()
     <div class="bubble" :class="message.role">
       <span class="text">{{ message.content }}</span>
       <span v-if="message.streaming" class="cursor">▍</span>
+      <template v-if="message.toolResults?.length">
+        <template v-for="(result, index) in message.toolResults" :key="`${result.name}-${index}`">
+          <CorrectionCard v-if="result.name === 'correct_text'" :result="result.payload" />
+          <QuizCard v-else-if="result.name === 'generate_quiz'" :quiz="result.payload" />
+        </template>
+      </template>
     </div>
   </div>
 </template>
@@ -27,7 +36,7 @@ defineProps<{ message: Message }>()
 }
 
 .bubble {
-  max-width: 80%;
+  max-width: min(80%, 42rem);
   padding: 0.6rem 0.8rem;
   border-radius: 0.9rem;
   font-size: 0.9rem;

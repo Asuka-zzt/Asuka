@@ -1,7 +1,8 @@
 import type { WsEvent } from '@/types/chat'
+import type { LanguageToolResult, PersonaId } from '@/types/language'
 import type { EmotionType } from '@/types/live2d'
 
-import { onBeforeUnmount, onMounted } from 'vue'
+import { onBeforeUnmount, onMounted, watch } from 'vue'
 
 import { useTtsAudio } from '@/composables/useTtsAudio'
 import { useChatStore } from '@/stores/chat'
@@ -9,6 +10,11 @@ import { useLive2DStore } from '@/stores/live2d'
 
 const EMOTION_TAG_RE = /\[emotion:(idle|think|happy|sad)\]\s*$/i
 const EXPRESSION_TAG_RE = /\[expression:([A-Za-z0-9_. -]+)\]\s*$/i
+
+interface SendContext {
+  persona_id?: PersonaId
+  level?: string
+}
 
 function parseVisualTags(content: string): {
   content: string
@@ -44,6 +50,10 @@ function parseVisualTags(content: string): {
   }
 }
 
+function isLanguageToolResult(data: WsEvent): data is Extract<WsEvent, { type: 'tool.result' }> {
+  return data.type === 'tool.result' && (data.name === 'correct_text' || data.name === 'generate_quiz')
+}
+
 // 封装 /ws/{conversation_id}：连接、流式 token、基础重连。
 // 在组件 setup 中调用一次（ChatPanel），返回 send()。
 export function useChatSocket() {
@@ -53,6 +63,7 @@ export function useChatSocket() {
   let ws: WebSocket | null = null
   let retry = 0
   let closedByUser = false
+  let reconnecting = false
 
   function wsUrl(): string {
     const base = import.meta.env.VITE_WS_BASE
@@ -68,6 +79,11 @@ export function useChatSocket() {
     }
     ws.onclose = () => {
       store.connected = false
+      if (reconnecting) {
+        reconnecting = false
+        connect()
+        return
+      }
       if (!closedByUser) {
         retry += 1
         setTimeout(connect, Math.min(5000, 500 * retry))
@@ -97,6 +113,12 @@ export function useChatSocket() {
         store.setError(data.content)
         tts.stop()
       }
+      else if (isLanguageToolResult(data)) {
+        store.appendToolResult({
+          name: data.name,
+          payload: data.payload,
+        } as LanguageToolResult)
+      }
       else if (data.type === 'live2d.emotion') {
         // Defer the visual change to when the matching speech plays (synced via the
         // TTS queue) instead of applying it the moment the tag is parsed.
@@ -111,7 +133,17 @@ export function useChatSocket() {
     }
   }
 
-  function send(text: string) {
+  function reconnect() {
+    retry = 0
+    if (ws && ws.readyState !== WebSocket.CLOSED) {
+      reconnecting = true
+      ws.close()
+      return
+    }
+    connect()
+  }
+
+  function send(text: string, context: SendContext = {}) {
     const t = text.trim()
     if (!t)
       return
@@ -120,7 +152,7 @@ export function useChatSocket() {
     live2d.setThinking()
     store.startAssistant()
     if (ws && ws.readyState === WebSocket.OPEN)
-      ws.send(JSON.stringify({ message: t }))
+      ws.send(JSON.stringify({ message: t, ...context }))
     else {
       store.setError('未连接到服务端')
       live2d.setEmotion('idle')
@@ -128,6 +160,10 @@ export function useChatSocket() {
   }
 
   onMounted(connect)
+  watch(() => store.conversationId, () => {
+    if (!closedByUser)
+      reconnect()
+  })
   onBeforeUnmount(() => {
     closedByUser = true
     ws?.close()

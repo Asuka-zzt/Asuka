@@ -37,6 +37,10 @@ class Settings(BaseSettings):
 
     # TTS
     tts_voice: str = "zh-CN-XiaoxiaoNeural"
+    tts_voices: dict[str, str] = {
+        "english": "en-US-AriaNeural",
+        "japanese": "ja-JP-NanamiNeural",
+    }
     tts_rate: str = "+0%"
     tts_volume: str = "+0%"
     tts_pitch: str = "+0Hz"

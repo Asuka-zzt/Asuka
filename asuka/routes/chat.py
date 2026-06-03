@@ -4,6 +4,7 @@ from fastapi import APIRouter
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
 
+from asuka.core.agent.presets import resolve_agent_config
 from asuka.core.graph.dispatch import build_agent
 from asuka.routes.ws import Live2DTagExtractor  # reuse for tag stripping
 
@@ -13,6 +14,8 @@ router = APIRouter()
 class ChatRequest(BaseModel):
     conversation_id: str
     message: str
+    persona_id: str | None = None
+    level: str | None = None
 
 
 class ChatResponse(BaseModel):
@@ -22,7 +25,7 @@ class ChatResponse(BaseModel):
 @router.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest) -> ChatResponse:
     """同步调用 Agent，返回完整回复（自动剥离表情控制标签）。"""
-    agent = await build_agent()
+    agent = await build_agent(resolve_agent_config(req.persona_id, req.level))
     result = await agent.ainvoke(
         {"messages": [HumanMessage(content=req.message)]},
         config={"configurable": {"thread_id": req.conversation_id}},

@@ -74,7 +74,7 @@ def ws_app(monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[FastAPI, dict[str,
     async def fake_checkpointer() -> MemorySaver:
         return MemorySaver()
 
-    monkeypatch.setattr(dispatch, "_agent", None)
+    monkeypatch.setattr(dispatch, "_agents", {})
     monkeypatch.setattr(dispatch, "get_llm", lambda _m: FakeToolCallingModel(responses))
     monkeypatch.setattr(dispatch, "get_tools_for_agent", lambda _id: [generate_wiki])
     monkeypatch.setattr(dispatch, "get_checkpointer", fake_checkpointer)
