@@ -1,4 +1,5 @@
 import type { Message } from '@/types/chat'
+import type { LanguageToolResult } from '@/types/language'
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
@@ -14,6 +15,13 @@ export const useChatStore = defineStore('chat', () => {
   const sending = ref(false)
   const connected = ref(false)
   let streamingId: string | null = null
+
+  function resetConversation(prefix = 'web') {
+    conversationId.value = `${prefix}-${uid()}`
+    messages.value = []
+    sending.value = false
+    streamingId = null
+  }
 
   function pushUser(content: string) {
     messages.value.push({ id: uid(), role: 'user', content })
@@ -37,6 +45,15 @@ export const useChatStore = defineStore('chat', () => {
     return m
   }
 
+  function appendToolResult(result: LanguageToolResult): Message | undefined {
+    const m = current()
+    if (m) {
+      m.toolResults ??= []
+      m.toolResults.push(result)
+    }
+    return m
+  }
+
   function finalize(): Message | undefined {
     const m = current()
     if (m)
@@ -56,5 +73,5 @@ export const useChatStore = defineStore('chat', () => {
     sending.value = false
   }
 
-  return { conversationId, messages, sending, connected, pushUser, startAssistant, appendToken, finalize, setError }
+  return { conversationId, messages, sending, connected, resetConversation, pushUser, startAssistant, appendToken, appendToolResult, finalize, setError }
 })

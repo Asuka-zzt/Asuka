@@ -1,6 +1,7 @@
 """POST /api/tts — synthesize assistant text to speech audio."""
 
 from collections.abc import AsyncIterator
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Response
 from fastapi.responses import StreamingResponse
@@ -14,6 +15,7 @@ router = APIRouter()
 
 class TTSRequest(BaseModel):
     text: str = Field(..., min_length=1)
+    language: Literal["english", "japanese"] | None = None
     voice: str | None = None
 
 
@@ -35,7 +37,11 @@ async def tts(req: TTSRequest) -> Response:
     """Return MP3 audio for the provided text."""
     text = _validate_request(req)
     try:
-        audio = await tts_provider.synthesize_speech(text, req.voice)
+        audio = await tts_provider.synthesize_speech(
+            text,
+            voice=req.voice,
+            language=req.language,
+        )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail="TTS synthesis failed") from exc
     return Response(content=audio, media_type="audio/mpeg")
@@ -48,7 +54,11 @@ async def stream_tts(req: TTSRequest) -> StreamingResponse:
 
     async def audio_stream() -> AsyncIterator[bytes]:
         try:
-            async for chunk in tts_provider.iter_speech_chunks(text, req.voice):
+            async for chunk in tts_provider.iter_speech_chunks(
+                text,
+                voice=req.voice,
+                language=req.language,
+            ):
                 yield chunk
         except Exception as exc:  # noqa: BLE001
             raise RuntimeError("TTS synthesis failed") from exc

@@ -51,6 +51,8 @@ class AgentConfig(BaseModel):
     )
 
     model_id: str = Field(default_factory=lambda: get_settings().default_model)
+    language: str | None = None
+    level: str | None = None
 
 
 def default_agent() -> AgentConfig:

@@ -14,6 +14,20 @@ def test_registry_contains_wiki() -> None:
     assert "generate_wiki" in names
 
 
+def test_teacher_registry_contains_language_tools_only() -> None:
+    names = [t.name for t in get_tools_for_agent("english_teacher")]
+    assert "correct_text" in names
+    assert "generate_quiz" in names
+    assert "generate_wiki" not in names
+
+
+def test_japanese_teacher_registry_contains_language_tools_only() -> None:
+    names = [t.name for t in get_tools_for_agent("japanese_teacher")]
+    assert "correct_text" in names
+    assert "generate_quiz" in names
+    assert "generate_wiki" not in names
+
+
 async def test_generate_wiki_tool(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

@@ -15,6 +15,7 @@ const { theme } = storeToRefs(ui)
     </div>
     <nav class="nav">
       <RouterLink to="/" class="nav-link">Chat</RouterLink>
+      <RouterLink to="/learn" class="nav-link">语言学习</RouterLink>
       <RouterLink to="/agent" class="nav-link">Agent 测试台</RouterLink>
       <RouterLink to="/wiki" class="nav-link">Wiki 生成</RouterLink>
     </nav>
