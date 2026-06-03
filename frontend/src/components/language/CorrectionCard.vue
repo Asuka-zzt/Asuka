@@ -3,7 +3,7 @@ import type { CorrectionResult, LanguageCode } from '@/types/language'
 
 import { ref } from 'vue'
 
-import { postTts } from '@/api/client'
+import { requestModelSpeech } from '@/composables/modelSpeech'
 
 const props = defineProps<{ result: CorrectionResult }>()
 const playing = ref(false)
@@ -15,11 +15,7 @@ async function speak(text: string, language: LanguageCode) {
   playing.value = true
   error.value = ''
   try {
-    const blob = await postTts(text, undefined, language)
-    const url = URL.createObjectURL(blob)
-    const audio = new Audio(url)
-    audio.addEventListener('ended', () => URL.revokeObjectURL(url), { once: true })
-    await audio.play()
+    await requestModelSpeech(text, language)
   }
   catch {
     error.value = '朗读失败'

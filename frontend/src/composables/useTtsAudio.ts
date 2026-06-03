@@ -1,4 +1,5 @@
 import type { EmotionType, Live2DVisualCue } from '@/types/live2d'
+import type { LanguageCode } from '@/types/language'
 
 import { onBeforeUnmount } from 'vue'
 
@@ -11,12 +12,14 @@ interface AudioWindow extends Window {
 
 interface QueuedSpeech {
   text: string
+  language?: LanguageCode
   emotion?: EmotionType
   // Visual cue applied when this segment starts playing, so expression/emotion land
   // in sync with the spoken line instead of when the control tag was parsed.
   cue?: Live2DVisualCue
   retries: number
   blobPromise: Promise<TtsBlobResult>
+  onDone?: () => void
 }
 
 type TtsBlobResult =
@@ -52,6 +55,7 @@ function stripTrailingEmotionTag(text: string): string {
 function cleanForSpeech(text: string): string {
   return stripTrailingEmotionTag(text)
     .replace(CONTROL_TAG_RE, ' ')
+    .replace(/_{2,}/g, ' blank ')
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/`([^`]+)`/g, '$1')
     .replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1')
@@ -68,9 +72,9 @@ function cleanForSpeech(text: string): string {
     .trim()
 }
 
-async function preloadTts(text: string): Promise<TtsBlobResult> {
+async function preloadTts(text: string, language?: LanguageCode): Promise<TtsBlobResult> {
   try {
-    return { ok: true, blob: await postTts(text) }
+    return { ok: true, blob: await postTts(text, undefined, language) }
   }
   catch (error) {
     return { ok: false, error }
@@ -89,6 +93,7 @@ export function useTtsAudio() {
   let lastSnapshot = ''
   let chunksQueued = 0
   let playing = false
+  let activeSegment: QueuedSpeech | undefined
   const queue: QueuedSpeech[] = []
 
   function releaseAudio(): void {
@@ -228,16 +233,30 @@ export function useTtsAudio() {
         if (!segment)
           continue
 
+        activeSegment = segment
+        let completed = false
         try {
           const ok = await playQueuedSegment(segment, token)
-          if (!ok && segment.retries < 1)
+          if (!ok && segment.retries < 1) {
             queue.unshift(retrySegment(segment))
+            continue
+          }
+          completed = true
         }
         catch (err) {
           console.warn('[tts] streaming playback failed:', err)
           clearSegmentUrl()
-          if (segment.retries < 1)
+          if (segment.retries < 1) {
             queue.unshift(retrySegment(segment))
+            continue
+          }
+          completed = true
+        }
+        finally {
+          if (completed)
+            segment.onDone?.()
+          if (activeSegment === segment)
+            activeSegment = undefined
         }
       }
     }
@@ -254,26 +273,31 @@ export function useTtsAudio() {
     }
   }
 
-  function enqueueText(text: string, emotion?: EmotionType): void {
+  function enqueueText(text: string, emotion?: EmotionType, language?: LanguageCode): Promise<void> {
     const clean = cleanForSpeech(text)
     if (!clean)
-      return
+      return Promise.resolve()
 
-    queue.push({
-      text: clean,
-      emotion,
-      retries: 0,
-      blobPromise: preloadTts(clean),
+    const done = new Promise<void>((resolve) => {
+      queue.push({
+        text: clean,
+        language,
+        emotion,
+        retries: 0,
+        blobPromise: preloadTts(clean, language),
+        onDone: resolve,
+      })
     })
     chunksQueued += 1
     void drainQueue(playToken)
+    return done
   }
 
   function retrySegment(segment: QueuedSpeech): QueuedSpeech {
     return {
       ...segment,
       retries: segment.retries + 1,
-      blobPromise: preloadTts(segment.text),
+      blobPromise: preloadTts(segment.text, segment.language),
     }
   }
 
@@ -340,7 +364,11 @@ export function useTtsAudio() {
 
   function stop(): void {
     playToken += 1
+    for (const segment of queue)
+      segment.onDone?.()
     queue.length = 0
+    activeSegment?.onDone?.()
+    activeSegment = undefined
     pendingText = ''
     lastSnapshot = ''
     chunksQueued = 0

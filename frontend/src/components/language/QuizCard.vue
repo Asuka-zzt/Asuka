@@ -3,7 +3,7 @@ import type { LanguageCode, QuizItem, QuizSet } from '@/types/language'
 
 import { reactive, ref } from 'vue'
 
-import { postTts } from '@/api/client'
+import { requestModelSpeech } from '@/composables/modelSpeech'
 
 const props = defineProps<{ quiz: QuizSet }>()
 const answers = reactive<Record<number, string>>({})
@@ -15,11 +15,7 @@ async function speak(index: number, item: QuizItem, language: LanguageCode) {
     return
   playingIndex.value = index
   try {
-    const blob = await postTts(item.question, undefined, language)
-    const url = URL.createObjectURL(blob)
-    const audio = new Audio(url)
-    audio.addEventListener('ended', () => URL.revokeObjectURL(url), { once: true })
-    await audio.play()
+    await requestModelSpeech(item.question, language)
   }
   finally {
     playingIndex.value = null
