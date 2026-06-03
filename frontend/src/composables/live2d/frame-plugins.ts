@@ -18,6 +18,8 @@ export type Live2DFramePlugin = (ctx: Live2DFrameContext) => void
 const PARAM_MOUTH_OPEN_Y = 'ParamMouthOpenY'
 const PARAM_EYE_L_OPEN = 'ParamEyeLOpen'
 const PARAM_EYE_R_OPEN = 'ParamEyeROpen'
+const PARAM_EYE_BALL_X = 'ParamEyeBallX'
+const PARAM_EYE_BALL_Y = 'ParamEyeBallY'
 
 function clamp01(value: number): number {
   if (!Number.isFinite(value))
@@ -99,5 +101,39 @@ export function createAutoBlinkPlugin(
 
     coreModel.setParameterValueById(PARAM_EYE_L_OPEN, open)
     coreModel.setParameterValueById(PARAM_EYE_R_OPEN, open)
+  }
+}
+
+// Gentle idle eye drift on ParamEyeBallX/Y. Skips while `getActive()` is true
+// (speaking or recent pointer focus) so the SDK focus controller keeps control.
+export function createIdleEyeFocusPlugin(
+  getActive: () => boolean,
+  opts: { driftMs?: number, range?: number } = {},
+): Live2DFramePlugin {
+  const driftMs = opts.driftMs ?? 3000
+  const range = opts.range ?? 0.3
+
+  let currentX = 0
+  let currentY = 0
+  let targetX = 0
+  let targetY = 0
+  let timer = driftMs // pick a target on the first idle frame
+
+  return ({ coreModel, deltaMs }) => {
+    if (getActive())
+      return
+
+    timer += deltaMs
+    if (timer >= driftMs) {
+      timer = 0
+      targetX = (Math.random() * 2 - 1) * range
+      targetY = (Math.random() * 2 - 1) * range
+    }
+
+    const k = deltaMs > 0 ? Math.min(1, deltaMs / 500) : 0
+    currentX += (targetX - currentX) * k
+    currentY += (targetY - currentY) * k
+    coreModel.setParameterValueById(PARAM_EYE_BALL_X, currentX)
+    coreModel.setParameterValueById(PARAM_EYE_BALL_Y, currentY)
   }
 }

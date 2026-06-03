@@ -5,7 +5,7 @@ import type { Live2DCoreModel, Live2DFramePlugin } from './live2d/frame-plugins'
 
 import { onBeforeUnmount, ref } from 'vue'
 
-import { createAutoBlinkPlugin, createLipSyncPlugin } from './live2d/frame-plugins'
+import { createAutoBlinkPlugin, createIdleEyeFocusPlugin, createLipSyncPlugin } from './live2d/frame-plugins'
 
 export type Live2DState = 'placeholder' | 'loading' | 'mounted' | 'error'
 
@@ -14,6 +14,8 @@ const DEFAULT_MODEL_SCALE = 1
 const DEFAULT_MODEL_OFFSET_X = 0
 const DEFAULT_MODEL_OFFSET_Y = 0
 const DEFAULT_LIPSYNC_RELEASE_MS = 200
+// How long after the last pointer move the SDK focus keeps eye control before idle drift resumes.
+const POINTER_FOCUS_TIMEOUT_MS = 1000
 
 declare global {
   interface Window {
@@ -62,6 +64,10 @@ interface Live2DRuntime {
   lastFrameNow?: number
   // Target ParamMouthOpenY consumed each frame by the lipSync plugin.
   mouthTarget?: number
+  // Timestamp of the last pointer move over the stage; idle eye drift pauses while recent.
+  lastPointerMoveAt?: number
+  pointerTarget?: HTMLElement
+  onPointerMove?: () => void
 }
 
 function containerSize(container: HTMLElement) {
@@ -107,7 +113,18 @@ function fitModel(runtime: Live2DRuntime, container: HTMLElement) {
 
 interface FramePluginOptions {
   autoBlink: boolean
+  idleEye: boolean
   lipSyncReleaseMs: number
+}
+
+// True while the model is speaking or the pointer moved recently, so idle eye
+// drift yields to lipsync timing / the SDK focus controller.
+function isStageActive(runtime: Live2DRuntime): boolean {
+  if ((runtime.mouthTarget ?? 0) > 0.001)
+    return true
+  if (runtime.lastPointerMoveAt === undefined)
+    return false
+  return performance.now() - runtime.lastPointerMoveAt < POINTER_FOCUS_TIMEOUT_MS
 }
 
 function buildFramePlugins(runtime: Live2DRuntime, options: FramePluginOptions): Live2DFramePlugin[] {
@@ -116,6 +133,8 @@ function buildFramePlugins(runtime: Live2DRuntime, options: FramePluginOptions):
   ]
   if (options.autoBlink)
     plugins.push(createAutoBlinkPlugin())
+  if (options.idleEye)
+    plugins.push(createIdleEyeFocusPlugin(() => isStageActive(runtime)))
   return plugins
 }
 
@@ -161,6 +180,12 @@ function restoreFramePlugins(runtime: Live2DRuntime): void {
   runtime.framePlugins = undefined
   runtime.lastFrameNow = undefined
   runtime.mouthTarget = 0
+
+  if (runtime.pointerTarget && runtime.onPointerMove)
+    runtime.pointerTarget.removeEventListener('pointermove', runtime.onPointerMove)
+  runtime.pointerTarget = undefined
+  runtime.onPointerMove = undefined
+  runtime.lastPointerMoveAt = undefined
 }
 
 export function useLive2D(container: Ref<HTMLDivElement | undefined>) {
@@ -170,6 +195,7 @@ export function useLive2D(container: Ref<HTMLDivElement | undefined>) {
   const runtime: Live2DRuntime = {}
   const framePluginOptions: FramePluginOptions = {
     autoBlink: envBool(import.meta.env.VITE_LIVE2D_AUTO_BLINK, true),
+    idleEye: envBool(import.meta.env.VITE_LIVE2D_IDLE_EYE, true),
     lipSyncReleaseMs: envNumber(import.meta.env.VITE_LIVE2D_LIPSYNC_RELEASE_MS, DEFAULT_LIPSYNC_RELEASE_MS),
   }
   let mountToken = 0
@@ -276,6 +302,12 @@ export function useLive2D(container: Ref<HTMLDivElement | undefined>) {
       }
       expressionNames.value = expressionNamesOf(runtime)
       installFramePlugins(runtime, framePluginOptions)
+      if (framePluginOptions.idleEye) {
+        const handler = () => { runtime.lastPointerMoveAt = performance.now() }
+        target.addEventListener('pointermove', handler)
+        runtime.pointerTarget = target
+        runtime.onPointerMove = handler
+      }
       fitModel(runtime, target)
 
       runtime.resizeObserver = new ResizeObserver(() => fitModel(runtime, target))
