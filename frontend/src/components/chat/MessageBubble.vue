@@ -3,6 +3,7 @@ import type { Message } from '@/types/chat'
 
 import CorrectionCard from '@/components/language/CorrectionCard.vue'
 import QuizCard from '@/components/language/QuizCard.vue'
+import MarkdownText from './MarkdownText.vue'
 
 defineProps<{ message: Message }>()
 </script>
@@ -10,7 +11,7 @@ defineProps<{ message: Message }>()
 <template>
   <div class="row" :class="message.role === 'user' ? 'right' : 'left'">
     <div class="bubble" :class="message.role">
-      <span class="text">{{ message.content }}</span>
+      <MarkdownText :content="message.content" />
       <span v-if="message.streaming" class="cursor">▍</span>
       <template v-if="message.toolResults?.length">
         <template v-for="(result, index) in message.toolResults" :key="`${result.name}-${index}`">
@@ -53,11 +54,6 @@ defineProps<{ message: Message }>()
   background: var(--surface-2);
   color: var(--text);
   border-bottom-left-radius: 0.2rem;
-}
-
-.text {
-  white-space: pre-wrap;
-  word-break: break-word;
 }
 
 .cursor {
