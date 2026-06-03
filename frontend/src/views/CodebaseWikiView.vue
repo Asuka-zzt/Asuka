@@ -607,8 +607,8 @@ function renderMarkdown(markdown: string): MarkdownBlock[] {
   display: grid;
   grid-template-columns: 19rem minmax(0, 1fr) 24rem;
   gap: 0;
-  background: #050609;
-  color: #f2f4f8;
+  background: var(--bg);
+  color: var(--text);
 }
 
 .sidebar,
@@ -616,17 +616,17 @@ function renderMarkdown(markdown: string): MarkdownBlock[] {
   min-height: 0;
   overflow-y: auto;
   padding: 1rem;
-  background: #050609;
+  background: var(--bg);
 }
 
 .sidebar {
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  border-right: 1px solid var(--border);
 }
 
 .chat-panel {
   display: flex;
   flex-direction: column;
-  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  border-left: 1px solid var(--border);
 }
 
 .project-mark {
@@ -662,7 +662,7 @@ function renderMarkdown(markdown: string): MarkdownBlock[] {
 .chat-head p {
   display: block;
   margin: 0.1rem 0 0;
-  color: rgba(242, 244, 248, 0.58);
+  color: var(--text-muted);
   font-size: 0.78rem;
 }
 
@@ -682,7 +682,7 @@ function renderMarkdown(markdown: string): MarkdownBlock[] {
 
 .box-head {
   margin-bottom: 0.8rem;
-  color: rgba(242, 244, 248, 0.72);
+  color: var(--text-muted);
   font-weight: 700;
 }
 
@@ -690,9 +690,9 @@ function renderMarkdown(markdown: string): MarkdownBlock[] {
   display: inline-grid;
   grid-template-columns: 1fr 1fr;
   padding: 0.16rem;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border);
   border-radius: 0.5rem;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface-3);
 }
 
 .segment {
@@ -700,20 +700,20 @@ function renderMarkdown(markdown: string): MarkdownBlock[] {
   padding: 0.34rem 0.5rem;
   border-radius: 0.35rem;
   background: transparent;
-  color: rgba(242, 244, 248, 0.66);
+  color: var(--text-muted);
   font-size: 0.78rem;
 }
 
 .segment.active {
-  background: rgba(97, 142, 255, 0.32);
-  color: #fff;
+  background: var(--primary);
+  color: var(--on-primary);
 }
 
 .field {
   display: grid;
   gap: 0.35rem;
   margin-bottom: 0.7rem;
-  color: rgba(242, 244, 248, 0.62);
+  color: var(--text-muted);
   font-size: 0.76rem;
 }
 
@@ -721,10 +721,10 @@ function renderMarkdown(markdown: string): MarkdownBlock[] {
 .chat-input input {
   width: 100%;
   min-height: 2.35rem;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--border-strong);
   border-radius: 0.5rem;
-  background: #111318;
-  color: #f2f4f8;
+  background: var(--surface);
+  color: var(--text);
   font: inherit;
 }
 
@@ -735,7 +735,7 @@ function renderMarkdown(markdown: string): MarkdownBlock[] {
 .control:focus,
 .chat-input input:focus {
   outline: none;
-  border-color: rgba(101, 151, 255, 0.8);
+  border-color: var(--primary);
 }
 
 .textarea {
@@ -749,16 +749,16 @@ function renderMarkdown(markdown: string): MarkdownBlock[] {
 .drop-zone {
   margin: -0.25rem 0 0.75rem;
   padding: 0.65rem;
-  border: 1px dashed rgba(101, 151, 255, 0.36);
+  border: 1px dashed var(--primary-soft);
   border-radius: 0.5rem;
-  color: rgba(242, 244, 248, 0.48);
+  color: var(--text-faint);
   text-align: center;
   font-size: 0.76rem;
 }
 
 .advanced {
   margin: 0.25rem 0 0.8rem;
-  color: rgba(242, 244, 248, 0.7);
+  color: var(--text-muted);
 }
 
 .advanced summary {
@@ -773,7 +773,7 @@ function renderMarkdown(markdown: string): MarkdownBlock[] {
   align-items: center;
   gap: 0.45rem;
   margin: 0.2rem 0 0.85rem;
-  color: rgba(242, 244, 248, 0.72);
+  color: var(--text-muted);
   font-size: 0.82rem;
 }
 
@@ -783,8 +783,8 @@ function renderMarkdown(markdown: string): MarkdownBlock[] {
   width: 100%;
   min-height: 2.45rem;
   border-radius: 0.5rem;
-  background: #2f7df6;
-  color: #fff;
+  background: var(--primary);
+  color: var(--on-primary);
   font-weight: 800;
 }
 
@@ -796,19 +796,19 @@ function renderMarkdown(markdown: string): MarkdownBlock[] {
 
 .error-text,
 .chat-error {
-  color: #ff9a9a;
+  color: var(--danger);
   font-size: 0.78rem;
   line-height: 1.5;
 }
 
 .toc {
   padding-top: 0.8rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--border);
 }
 
 .toc-title {
   margin-bottom: 0.6rem;
-  color: rgba(242, 244, 248, 0.64);
+  color: var(--text-muted);
   font-size: 0.82rem;
   font-weight: 800;
 }
@@ -820,14 +820,14 @@ function renderMarkdown(markdown: string): MarkdownBlock[] {
   padding: 0.62rem 0.75rem;
   border-left: 2px solid transparent;
   background: transparent;
-  color: rgba(242, 244, 248, 0.78);
+  color: var(--text);
   text-align: left;
 }
 
 .toc-item.active {
-  border-left-color: #7eadff;
-  background: rgba(126, 173, 255, 0.1);
-  color: #fff;
+  border-left-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
 }
 
 .toc-item span {
@@ -836,21 +836,21 @@ function renderMarkdown(markdown: string): MarkdownBlock[] {
 
 .toc-item small,
 .toc-empty {
-  color: rgba(242, 244, 248, 0.44);
+  color: var(--text-faint);
   font-size: 0.72rem;
 }
 
 .meta-box {
   display: grid;
   gap: 0.4rem;
-  color: rgba(242, 244, 248, 0.48);
+  color: var(--text-faint);
   font-size: 0.72rem;
 }
 
 .meta-box button {
   overflow: hidden;
   padding: 0 0.65rem;
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--surface-2);
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 600;
@@ -861,7 +861,7 @@ function renderMarkdown(markdown: string): MarkdownBlock[] {
   min-height: 0;
   overflow-y: auto;
   padding: 1rem;
-  background: #08090d;
+  background: var(--surface-3);
 }
 
 .reader-toolbar,
@@ -882,7 +882,7 @@ function renderMarkdown(markdown: string): MarkdownBlock[] {
 
 .eyebrow {
   margin: 0 0 0.25rem;
-  color: rgba(242, 244, 248, 0.52);
+  color: var(--text-muted);
   font-size: 0.78rem;
   font-weight: 700;
 }
@@ -901,20 +901,20 @@ function renderMarkdown(markdown: string): MarkdownBlock[] {
 }
 
 .status.running {
-  background: rgba(101, 151, 255, 0.18);
-  color: #9dc0ff;
+  background: var(--primary-soft);
+  color: var(--primary);
 }
 
 .status.success {
-  background: rgba(95, 240, 180, 0.14);
-  color: #88efc1;
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+  color: var(--success);
 }
 
 .markdown-body {
   padding: 2rem;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--border-strong);
   border-radius: 0.75rem;
-  background: #15161a;
+  background: var(--surface);
   box-shadow: 0 18px 55px rgba(0, 0, 0, 0.28);
 }
 
@@ -938,7 +938,7 @@ function renderMarkdown(markdown: string): MarkdownBlock[] {
 
 .markdown-body :deep(h2) {
   padding-top: 0.7rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--border);
   font-size: 1.35rem;
 }
 
@@ -949,7 +949,7 @@ function renderMarkdown(markdown: string): MarkdownBlock[] {
 .markdown-body p,
 .markdown-body li,
 .markdown-body blockquote {
-  color: rgba(242, 244, 248, 0.78);
+  color: var(--text);
   font-size: 0.95rem;
   line-height: 1.75;
 }
@@ -962,15 +962,15 @@ function renderMarkdown(markdown: string): MarkdownBlock[] {
 .markdown-body blockquote {
   margin: 1rem 0;
   padding: 0.7rem 0.9rem;
-  border-left: 3px solid #7eadff;
-  background: rgba(126, 173, 255, 0.08);
+  border-left: 3px solid var(--primary);
+  background: var(--primary-softer);
 }
 
 .markdown-body pre {
   overflow-x: auto;
   padding: 1rem;
   border-radius: 0.5rem;
-  background: #08090d;
+  background: var(--surface-3);
 }
 
 .markdown-body code {
@@ -981,11 +981,11 @@ function renderMarkdown(markdown: string): MarkdownBlock[] {
 .markdown-body li code {
   padding: 0.12rem 0.28rem;
   border-radius: 0.3rem;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--surface-2);
 }
 
 .markdown-body :deep(a) {
-  color: #9dc0ff;
+  color: var(--primary);
 }
 
 .empty-reader {
@@ -994,9 +994,9 @@ function renderMarkdown(markdown: string): MarkdownBlock[] {
   place-items: center;
   align-content: center;
   gap: 0.65rem;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--border-strong);
   border-radius: 0.75rem;
-  background: #15161a;
+  background: var(--surface);
   text-align: center;
 }
 
@@ -1007,7 +1007,7 @@ function renderMarkdown(markdown: string): MarkdownBlock[] {
 
 .empty-reader p {
   margin: 0;
-  color: rgba(242, 244, 248, 0.52);
+  color: var(--text-muted);
 }
 
 .spark {
@@ -1029,7 +1029,7 @@ function renderMarkdown(markdown: string): MarkdownBlock[] {
   align-items: center;
   gap: 0.75rem;
   padding-bottom: 1rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--border);
 }
 
 .chat-list {
@@ -1046,7 +1046,7 @@ function renderMarkdown(markdown: string): MarkdownBlock[] {
   max-width: 88%;
   padding: 0.72rem 0.82rem;
   border-radius: 0.65rem;
-  color: rgba(242, 244, 248, 0.84);
+  color: var(--text);
   font-size: 0.9rem;
   line-height: 1.55;
   white-space: pre-wrap;
@@ -1054,13 +1054,13 @@ function renderMarkdown(markdown: string): MarkdownBlock[] {
 
 .chat-message.assistant {
   align-self: flex-start;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--surface-2);
 }
 
 .chat-message.user {
   align-self: flex-end;
-  background: rgba(47, 125, 246, 0.3);
-  color: #fff;
+  background: var(--primary);
+  color: var(--on-primary);
 }
 
 .chat-input {
@@ -1068,7 +1068,7 @@ function renderMarkdown(markdown: string): MarkdownBlock[] {
   grid-template-columns: minmax(0, 1fr) 4.5rem;
   gap: 0.5rem;
   padding-top: 0.75rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--border);
 }
 
 .chat-input input {
@@ -1088,7 +1088,7 @@ function renderMarkdown(markdown: string): MarkdownBlock[] {
     grid-column: 1 / -1;
     min-height: 22rem;
     border-left: none;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid var(--border);
   }
 }
 

@@ -96,8 +96,8 @@ async function send() {
 }
 
 .card {
-  background: rgba(20, 18, 30, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--surface-translucent);
+  border: 1px solid var(--border);
   border-radius: 1rem;
   padding: 1.1rem 1.2rem;
 }
@@ -141,11 +141,11 @@ async function send() {
 .input {
   width: 100%;
   margin-top: 0.35rem;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--surface-3);
+  border: 1px solid var(--border);
   border-radius: 0.6rem;
   padding: 0.5rem 0.65rem;
-  color: #ececf5;
+  color: var(--text);
   font-size: 0.9rem;
   font-family: inherit;
   resize: vertical;
@@ -153,12 +153,12 @@ async function send() {
 
 .input:focus {
   outline: none;
-  border-color: rgba(124, 108, 240, 0.6);
+  border-color: var(--primary);
 }
 
 .btn {
-  background: #7c6cf0;
-  color: #fff;
+  background: var(--primary);
+  color: var(--on-primary);
   border-radius: 0.6rem;
   padding: 0.55rem 1.2rem;
   font-size: 0.9rem;
@@ -169,14 +169,14 @@ async function send() {
 }
 
 .err {
-  color: #ff6b6b;
+  color: var(--danger);
   font-size: 0.85rem;
   margin-top: 0.75rem;
 }
 
 .reply {
   margin-top: 0.85rem;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface);
   border-radius: 0.7rem;
   padding: 0.75rem 0.8rem;
 }

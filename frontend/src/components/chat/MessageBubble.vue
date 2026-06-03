@@ -35,14 +35,14 @@ defineProps<{ message: Message }>()
 }
 
 .bubble.user {
-  background: #7c6cf0;
-  color: #fff;
+  background: var(--primary);
+  color: var(--on-primary);
   border-bottom-right-radius: 0.2rem;
 }
 
 .bubble.assistant {
-  background: rgba(255, 255, 255, 0.08);
-  color: #ececf5;
+  background: var(--surface-2);
+  color: var(--text);
   border-bottom-left-radius: 0.2rem;
 }
 

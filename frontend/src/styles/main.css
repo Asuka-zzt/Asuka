@@ -1,5 +1,68 @@
+/*
+  主题令牌（语义化 CSS 变量）。日间=蓝白（对齐 AIRI 浅色），夜间=中性近黑。
+  通过 <html> 上的 .dark class 切换（见 index.html 防闪烁脚本 + stores/ui.ts）。
+  主色对齐 AIRI presetChromatic baseHue 220.44（azure）。
+*/
 :root {
+  color-scheme: light;
+
+  --bg: #e9f1f8;
+  --bg-glow-1: rgba(26, 169, 210, 0.12);
+  --bg-glow-2: rgba(0, 150, 200, 0.06);
+
+  --surface: #ffffff;
+  --surface-2: #eaf2fb;
+  --surface-3: #f1f6fc;
+  --surface-translucent: rgba(255, 255, 255, 0.72);
+
+  --border: rgba(20, 50, 80, 0.12);
+  --border-strong: rgba(20, 50, 80, 0.18);
+
+  --text: #1b2a3a;
+  --text-muted: #51637a;
+  --text-faint: #8595a8;
+
+  --primary: #1aa9d2;
+  --primary-strong: #0090bc;
+  --primary-soft: rgba(26, 169, 210, 0.14);
+  --primary-softer: rgba(26, 169, 210, 0.07);
+  --on-primary: #ffffff;
+
+  --scrim: rgba(255, 255, 255, 0.85);
+  --success: #16b364;
+  --danger: #e5484d;
+  --warning: #c9820a;
+}
+
+.dark {
   color-scheme: dark;
+
+  --bg: #121212;
+  --bg-glow-1: rgba(26, 169, 210, 0.14);
+  --bg-glow-2: rgba(0, 180, 220, 0.08);
+
+  --surface: rgba(255, 255, 255, 0.05);
+  --surface-2: rgba(255, 255, 255, 0.08);
+  --surface-3: rgba(255, 255, 255, 0.06);
+  --surface-translucent: rgba(20, 18, 30, 0.55);
+
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.12);
+
+  --text: #e6e7e9;
+  --text-muted: rgba(242, 244, 248, 0.66);
+  --text-faint: rgba(242, 244, 248, 0.46);
+
+  --primary: #1aa9d2;
+  --primary-strong: #5cc4e3;
+  --primary-soft: rgba(26, 169, 210, 0.18);
+  --primary-softer: rgba(26, 169, 210, 0.10);
+  --on-primary: #06222b;
+
+  --scrim: rgba(10, 9, 16, 0.72);
+  --success: #3ddc84;
+  --danger: #ff6b6b;
+  --warning: #f0b03c;
 }
 
 * {
@@ -16,11 +79,12 @@ body,
 
 body {
   font-family: system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  color: #e8e6f0;
-  background: #0e0c16;
+  color: var(--text);
+  background: var(--bg);
   background-image:
-    radial-gradient(1200px 600px at 70% -10%, rgba(124, 108, 240, 0.18), transparent 60%),
-    radial-gradient(800px 500px at 0% 100%, rgba(80, 200, 255, 0.10), transparent 55%);
+    radial-gradient(1200px 600px at 70% -10%, var(--bg-glow-1), transparent 60%),
+    radial-gradient(800px 500px at 0% 100%, var(--bg-glow-2), transparent 55%);
+  transition: background-color 0.25s ease, color 0.25s ease;
 }
 
 a {
