@@ -1,7 +1,11 @@
 import type { Ref } from 'vue'
 import type { Application } from '@pixi/app'
 
+import type { Live2DCoreModel, Live2DFramePlugin } from './live2d/frame-plugins'
+
 import { onBeforeUnmount, ref } from 'vue'
+
+import { createAutoBlinkPlugin, createLipSyncPlugin } from './live2d/frame-plugins'
 
 export type Live2DState = 'placeholder' | 'loading' | 'mounted' | 'error'
 
@@ -9,6 +13,7 @@ const DEFAULT_CUBISM_CORE_URL = 'https://cubism.live2d.com/sdk-web/cubismcore/li
 const DEFAULT_MODEL_SCALE = 1
 const DEFAULT_MODEL_OFFSET_X = 0
 const DEFAULT_MODEL_OFFSET_Y = 0
+const DEFAULT_LIPSYNC_RELEASE_MS = 200
 
 declare global {
   interface Window {
@@ -31,11 +36,14 @@ interface Live2DRuntime {
     // pixi-live2d-display loads expressions declared in model3.json and applies them via
     // internalModel.motionManager.expressionManager inside its own per-frame update loop.
     internalModel?: {
+      // Built-in eye blink driver; we disable it so our autoBlink plugin can take over.
+      eyeBlink?: unknown
       coreModel?: {
         setParameterValueById?: (id: string, value: number) => void
         getParameterValueById?: (id: string) => number
       }
       motionManager?: {
+        update?: (model: object, now: number) => boolean
         expressionManager?: {
           definitions?: Array<{ Name?: string }>
           setExpression?: (id: string | number) => unknown
@@ -48,6 +56,12 @@ interface Live2DRuntime {
   resizeObserver?: ResizeObserver
   // Pending timer that clears a timed expression back to neutral.
   expressionResetTimer?: ReturnType<typeof setTimeout>
+  // Per-frame plugin chain run after the SDK's motionManager.update.
+  framePlugins?: Live2DFramePlugin[]
+  originalMotionUpdate?: (model: object, now: number) => boolean
+  lastFrameNow?: number
+  // Target ParamMouthOpenY consumed each frame by the lipSync plugin.
+  mouthTarget?: number
 }
 
 function containerSize(container: HTMLElement) {
@@ -64,6 +78,12 @@ function envNumber(value: string | undefined, fallback: number) {
 
   const parsed = Number.parseFloat(value)
   return Number.isFinite(parsed) ? parsed : fallback
+}
+
+function envBool(value: string | undefined, fallback: boolean) {
+  if (value === undefined || value === '')
+    return fallback
+  return value !== 'false' && value !== '0'
 }
 
 function fitModel(runtime: Live2DRuntime, container: HTMLElement) {
@@ -85,11 +105,73 @@ function fitModel(runtime: Live2DRuntime, container: HTMLElement) {
   runtime.model.y = height * (0.5 + offsetY)
 }
 
+interface FramePluginOptions {
+  autoBlink: boolean
+  lipSyncReleaseMs: number
+}
+
+function buildFramePlugins(runtime: Live2DRuntime, options: FramePluginOptions): Live2DFramePlugin[] {
+  const plugins: Live2DFramePlugin[] = [
+    createLipSyncPlugin(() => runtime.mouthTarget ?? 0, { releaseMs: options.lipSyncReleaseMs }),
+  ]
+  if (options.autoBlink)
+    plugins.push(createAutoBlinkPlugin())
+  return plugins
+}
+
+// Wrap the SDK's motionManager.update so our plugins write the final mouth/eye
+// params each frame, after the SDK has applied motions and expressions.
+function installFramePlugins(runtime: Live2DRuntime, options: FramePluginOptions): void {
+  const internal = runtime.model?.internalModel
+  const motionManager = internal?.motionManager
+  const coreModel = internal?.coreModel
+  if (!internal || typeof motionManager?.update !== 'function')
+    return
+  if (typeof coreModel?.setParameterValueById !== 'function' || typeof coreModel.getParameterValueById !== 'function')
+    return
+
+  // Disable the SDK's built-in eye blink so autoBlink owns the eye-open params.
+  if (options.autoBlink)
+    internal.eyeBlink = undefined
+
+  const core = coreModel as Live2DCoreModel
+  const plugins = buildFramePlugins(runtime, options)
+  const original = motionManager.update.bind(motionManager)
+
+  runtime.framePlugins = plugins
+  runtime.originalMotionUpdate = original
+  runtime.lastFrameNow = undefined
+
+  motionManager.update = (model: object, now: number): boolean => {
+    const result = original(model, now)
+    const deltaMs = runtime.lastFrameNow === undefined ? 0 : Math.max(0, now - runtime.lastFrameNow)
+    runtime.lastFrameNow = now
+    const ctx = { coreModel: core, now, deltaMs }
+    for (const plugin of plugins)
+      plugin(ctx)
+    return result
+  }
+}
+
+function restoreFramePlugins(runtime: Live2DRuntime): void {
+  const motionManager = runtime.model?.internalModel?.motionManager
+  if (motionManager && runtime.originalMotionUpdate)
+    motionManager.update = runtime.originalMotionUpdate
+  runtime.originalMotionUpdate = undefined
+  runtime.framePlugins = undefined
+  runtime.lastFrameNow = undefined
+  runtime.mouthTarget = 0
+}
+
 export function useLive2D(container: Ref<HTMLDivElement | undefined>) {
   const state = ref<Live2DState>('placeholder')
   const error = ref('')
   const expressionNames = ref<string[]>([])
   const runtime: Live2DRuntime = {}
+  const framePluginOptions: FramePluginOptions = {
+    autoBlink: envBool(import.meta.env.VITE_LIVE2D_AUTO_BLINK, true),
+    lipSyncReleaseMs: envNumber(import.meta.env.VITE_LIVE2D_LIPSYNC_RELEASE_MS, DEFAULT_LIPSYNC_RELEASE_MS),
+  }
   let mountToken = 0
   let cubismCorePromise: Promise<void> | undefined
 
@@ -193,6 +275,7 @@ export function useLive2D(container: Ref<HTMLDivElement | undefined>) {
         height: Math.max(1, model.height),
       }
       expressionNames.value = expressionNamesOf(runtime)
+      installFramePlugins(runtime, framePluginOptions)
       fitModel(runtime, target)
 
       runtime.resizeObserver = new ResizeObserver(() => fitModel(runtime, target))
@@ -208,6 +291,7 @@ export function useLive2D(container: Ref<HTMLDivElement | undefined>) {
 
   function dispose(): void {
     mountToken += 1
+    restoreFramePlugins(runtime)
     runtime.resizeObserver?.disconnect()
     runtime.resizeObserver = undefined
 
@@ -257,7 +341,11 @@ export function useLive2D(container: Ref<HTMLDivElement | undefined>) {
   }
 
   function setMouthOpen(value: number): void {
-    setParameter('ParamMouthOpenY', Math.min(1, Math.max(0, value)))
+    const clamped = Math.min(1, Math.max(0, value))
+    runtime.mouthTarget = clamped
+    // Fallback for when the per-frame plugin chain failed to install.
+    if (!runtime.framePlugins)
+      setParameter('ParamMouthOpenY', clamped)
   }
 
   function clearExpressionTimer(): void {
