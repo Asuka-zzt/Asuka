@@ -64,6 +64,7 @@ export function useChatSocket() {
   let retry = 0
   let closedByUser = false
   let reconnecting = false
+  let suppressCurrentTts = false
 
   function wsUrl(): string {
     const base = import.meta.env.VITE_WS_BASE
@@ -93,7 +94,7 @@ export function useChatSocket() {
       const data = JSON.parse(e.data as string) as WsEvent
       if (data.type === 'token') {
         const message = store.appendToken(data.content)
-        if (message)
+        if (message && !suppressCurrentTts)
           tts.feedSnapshot(message.content)
       }
       else if (data.type === 'done') {
@@ -101,13 +102,20 @@ export function useChatSocket() {
         if (message?.content) {
           const parsed = parseVisualTags(message.content)
           message.content = parsed.content
-          tts.flush(parsed.emotion)
-          if (parsed.expression)
+          if (suppressCurrentTts) {
+            tts.stop()
+            live2d.setEmotion(parsed.emotion)
+          }
+          else {
+            tts.flush(parsed.emotion)
+          }
+          if (!suppressCurrentTts && parsed.expression)
             tts.attachVisualCue({ expression: parsed.expression })
         }
         else {
           live2d.setEmotion('idle')
         }
+        suppressCurrentTts = false
       }
       else if (data.type === 'error') {
         store.setError(data.content)
@@ -118,6 +126,11 @@ export function useChatSocket() {
           name: data.name,
           payload: data.payload,
         } as LanguageToolResult)
+        if (data.name === 'generate_quiz') {
+          suppressCurrentTts = true
+          tts.stop()
+          live2d.setEmotion('idle')
+        }
       }
       else if (data.type === 'live2d.emotion') {
         // Defer the visual change to when the matching speech plays (synced via the
@@ -149,6 +162,7 @@ export function useChatSocket() {
       return
     store.pushUser(t)
     tts.stop()
+    suppressCurrentTts = false
     live2d.setThinking()
     store.startAssistant()
     if (ws && ws.readyState === WebSocket.OPEN)
