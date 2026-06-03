@@ -1,4 +1,4 @@
-import type { EmotionType } from '@/types/live2d'
+import type { EmotionType, Live2DVisualCue } from '@/types/live2d'
 
 import { onBeforeUnmount } from 'vue'
 
@@ -12,6 +12,9 @@ interface AudioWindow extends Window {
 interface QueuedSpeech {
   text: string
   emotion?: EmotionType
+  // Visual cue applied when this segment starts playing, so expression/emotion land
+  // in sync with the spoken line instead of when the control tag was parsed.
+  cue?: Live2DVisualCue
   retries: number
   blobPromise: Promise<TtsBlobResult>
 }
@@ -20,6 +23,7 @@ type TtsBlobResult =
   | { ok: true, blob: Blob }
   | { ok: false, error: unknown }
 
+const DEFAULT_EXPRESSION_DURATION_MS = 1800
 const CHUNK_BOUNDARY_RE = /[。！？!?；;]\s*/
 const EMOTION_TAG_RE = /\[emotion:(idle|think|happy|sad)\]\s*$/i
 const CONTROL_TAG_RE = /\[(?:emotion|expression):[^\]]+\]/gi
@@ -155,10 +159,35 @@ export function useTtsAudio() {
     }
   }
 
+  function applyCue(cue: Live2DVisualCue): void {
+    if (cue.emotion)
+      live2d.setEmotion(cue.emotion, cue.motion ? { group: cue.motion } : undefined)
+    if (cue.expression) {
+      live2d.setExpression({
+        name: cue.expression,
+        durationMs: cue.durationMs ?? DEFAULT_EXPRESSION_DURATION_MS,
+        intensity: cue.intensity,
+      })
+    }
+  }
+
+  // Anchor a visual cue to the most recently queued segment so it fires when that
+  // segment is spoken. If nothing is queued, the matching audio is already playing
+  // (or there is none), so apply it now.
+  function attachVisualCue(cue: Live2DVisualCue): void {
+    const last = queue[queue.length - 1]
+    if (last)
+      last.cue = { ...last.cue, ...cue }
+    else
+      applyCue(cue)
+  }
+
   async function playQueuedSegment(segment: QueuedSpeech, token: number): Promise<boolean> {
     clearSegmentUrl()
     if (segment.emotion)
       live2d.setEmotion(segment.emotion)
+    if (segment.cue)
+      applyCue(segment.cue)
 
     const activeAnalyser = await ensureAudioPipeline()
     if (token !== playToken)
@@ -328,7 +357,7 @@ export function useTtsAudio() {
     audioContext = undefined
   })
 
-  return { feedToken, feedSnapshot, flush, enqueueText, stop }
+  return { feedToken, feedSnapshot, flush, enqueueText, attachVisualCue, stop }
 }
 
 function sharedPrefixLength(a: string, b: string): number {

@@ -181,6 +181,26 @@ export function createIdleEyeFocusPlugin(getActive: () => boolean, opts?: {
 
 ---
 
+## 7.5 表情/情绪与语音同步（problem #4）
+
+**问题**：`live2d.emotion` WS 事件在后端检测到标签的瞬间就推送，前端原本立即应用
+expression/emotion——此时对应那句话的 TTS 还没播，导致"表情先变，话后说"。
+
+**方案**：复用 `useTtsAudio` 已有的「按段播放时应用 `segment.emotion`」机制，把整个
+视觉变化（emotion+motion+expression）做成 `Live2DVisualCue`，挂到 TTS 队列上：
+
+- `useTtsAudio.attachVisualCue(cue)`：锚定到**队尾段**（`queue[last].cue`），该段开始
+  播放时由 `playQueuedSegment` 调 `applyCue` 应用；若队列为空（对应音频正在播或没有
+  TTS），立即 `applyCue`。
+- `useChatSocket`：`live2d.emotion` 事件与 `done` 的尾部表情都改为 `tts.attachVisualCue(...)`，
+  不再即时 `live2d.set*`。
+- 标签放在「它描述那句话的末尾」（见提示词设计），该句此刻刚入队为队尾段，故表情与该句
+  语音同步出现。TTS 合成失败时 `applyCue` 仍在段播放起始处触发，不丢表情。
+
+类型：`Live2DVisualCue { emotion?, motion?, expression?, durationMs?, intensity? }`（`types/live2d.ts`）。
+
+---
+
 ## 8. 测试与验收
 
 前端当前**无单元测试运行器**（验收以 `pnpm --dir frontend lint`(vue-tsc) + 手动为准，对齐现有 live2d 提交方式）。
@@ -192,6 +212,8 @@ export function createIdleEyeFocusPlugin(getActive: () => boolean, opts?: {
   - ✓ TTS 播放时嘴随音频开合，**停止后 ~200ms 平滑闭合**（非突然闭嘴）。
   - ✓ idle 且鼠标不动时，眼神有**轻微自然漂移**；鼠标移动/说话时不抢 focus。
   - ✓ 触发 `[expression:xxx]` 表情仍生效（与插件链共存）。
+  - ✓ 鼠标在画布上移动时，眼睛+头部朝鼠标方向看（focus 跟随）。
+  - ✓ 表情/情绪在**对应那句话开始播报时**才出现，而非提前（problem #4）。
   - ✓ 切换模型 / HMR 后无双重眨眼、无报错。
 
 ---

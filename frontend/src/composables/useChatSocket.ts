@@ -9,7 +9,6 @@ import { useLive2DStore } from '@/stores/live2d'
 
 const EMOTION_TAG_RE = /\[emotion:(idle|think|happy|sad)\]\s*$/i
 const EXPRESSION_TAG_RE = /\[expression:([A-Za-z0-9_. -]+)\]\s*$/i
-const DEFAULT_EXPRESSION_DURATION_MS = 1800
 
 function parseVisualTags(content: string): {
   content: string
@@ -86,13 +85,9 @@ export function useChatSocket() {
         if (message?.content) {
           const parsed = parseVisualTags(message.content)
           message.content = parsed.content
-          if (parsed.expression) {
-            live2d.setExpression({
-              name: parsed.expression,
-              durationMs: DEFAULT_EXPRESSION_DURATION_MS,
-            })
-          }
           tts.flush(parsed.emotion)
+          if (parsed.expression)
+            tts.attachVisualCue({ expression: parsed.expression })
         }
         else {
           live2d.setEmotion('idle')
@@ -103,19 +98,15 @@ export function useChatSocket() {
         tts.stop()
       }
       else if (data.type === 'live2d.emotion') {
-        if (data.emotion) {
-          live2d.setEmotion(
-            data.emotion,
-            data.motion ? { group: data.motion } : undefined,
-          )
-        }
-        if (data.expression) {
-          live2d.setExpression({
-            name: data.expression,
-            durationMs: data.durationMs ?? DEFAULT_EXPRESSION_DURATION_MS,
-            intensity: data.intensity,
-          })
-        }
+        // Defer the visual change to when the matching speech plays (synced via the
+        // TTS queue) instead of applying it the moment the tag is parsed.
+        tts.attachVisualCue({
+          emotion: data.emotion,
+          motion: data.motion,
+          expression: data.expression,
+          durationMs: data.durationMs,
+          intensity: data.intensity,
+        })
       }
     }
   }
