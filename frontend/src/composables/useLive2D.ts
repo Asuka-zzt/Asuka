@@ -35,9 +35,15 @@ interface Live2DRuntime {
     destroy: () => void
     on?: (event: string, handler: (hitAreas: string[]) => void) => void
     motion?: (group: string, index?: number) => unknown
+    // Feeds the SDK focus controller (eyes + head angle) from stage-local coords.
+    focus?: (x: number, y: number, instant?: boolean) => void
     // pixi-live2d-display loads expressions declared in model3.json and applies them via
     // internalModel.motionManager.expressionManager inside its own per-frame update loop.
     internalModel?: {
+      // EventEmitter hooks; 'beforeModelUpdate' fires each frame after the SDK has applied
+      // motion/expression/eyeBlink/focus, right before model.update() — the final write slot.
+      on?: (event: string, handler: () => void) => void
+      off?: (event: string, handler: () => void) => void
       // Built-in eye blink driver; we disable it so our autoBlink plugin can take over.
       eyeBlink?: unknown
       coreModel?: {
@@ -45,7 +51,6 @@ interface Live2DRuntime {
         getParameterValueById?: (id: string) => number
       }
       motionManager?: {
-        update?: (model: object, now: number) => boolean
         expressionManager?: {
           definitions?: Array<{ Name?: string }>
           setExpression?: (id: string | number) => unknown
@@ -58,16 +63,16 @@ interface Live2DRuntime {
   resizeObserver?: ResizeObserver
   // Pending timer that clears a timed expression back to neutral.
   expressionResetTimer?: ReturnType<typeof setTimeout>
-  // Per-frame plugin chain run after the SDK's motionManager.update.
+  // Per-frame plugin chain run on the SDK's beforeModelUpdate event.
   framePlugins?: Live2DFramePlugin[]
-  originalMotionUpdate?: (model: object, now: number) => boolean
+  frameHandler?: () => void
   lastFrameNow?: number
   // Target ParamMouthOpenY consumed each frame by the lipSync plugin.
   mouthTarget?: number
   // Timestamp of the last pointer move over the stage; idle eye drift pauses while recent.
   lastPointerMoveAt?: number
   pointerTarget?: HTMLElement
-  onPointerMove?: () => void
+  onPointerMove?: (event: PointerEvent) => void
 }
 
 function containerSize(container: HTMLElement) {
@@ -138,13 +143,14 @@ function buildFramePlugins(runtime: Live2DRuntime, options: FramePluginOptions):
   return plugins
 }
 
-// Wrap the SDK's motionManager.update so our plugins write the final mouth/eye
-// params each frame, after the SDK has applied motions and expressions.
+// Run our plugins on the SDK's 'beforeModelUpdate' event so they write the FINAL
+// mouth/eye params each frame — after motion, expression, eyeBlink and focus, right
+// before model.update(). performance.now() is used because the SDK's frame timestamp
+// is in seconds, not milliseconds.
 function installFramePlugins(runtime: Live2DRuntime, options: FramePluginOptions): void {
   const internal = runtime.model?.internalModel
-  const motionManager = internal?.motionManager
   const coreModel = internal?.coreModel
-  if (!internal || typeof motionManager?.update !== 'function')
+  if (!internal || typeof internal.on !== 'function')
     return
   if (typeof coreModel?.setParameterValueById !== 'function' || typeof coreModel.getParameterValueById !== 'function')
     return
@@ -155,28 +161,26 @@ function installFramePlugins(runtime: Live2DRuntime, options: FramePluginOptions
 
   const core = coreModel as Live2DCoreModel
   const plugins = buildFramePlugins(runtime, options)
-  const original = motionManager.update.bind(motionManager)
-
   runtime.framePlugins = plugins
-  runtime.originalMotionUpdate = original
   runtime.lastFrameNow = undefined
 
-  motionManager.update = (model: object, now: number): boolean => {
-    const result = original(model, now)
+  const handler = (): void => {
+    const now = performance.now()
     const deltaMs = runtime.lastFrameNow === undefined ? 0 : Math.max(0, now - runtime.lastFrameNow)
     runtime.lastFrameNow = now
     const ctx = { coreModel: core, now, deltaMs }
     for (const plugin of plugins)
       plugin(ctx)
-    return result
   }
+  runtime.frameHandler = handler
+  internal.on('beforeModelUpdate', handler)
 }
 
 function restoreFramePlugins(runtime: Live2DRuntime): void {
-  const motionManager = runtime.model?.internalModel?.motionManager
-  if (motionManager && runtime.originalMotionUpdate)
-    motionManager.update = runtime.originalMotionUpdate
-  runtime.originalMotionUpdate = undefined
+  const internal = runtime.model?.internalModel
+  if (internal && runtime.frameHandler && typeof internal.off === 'function')
+    internal.off('beforeModelUpdate', runtime.frameHandler)
+  runtime.frameHandler = undefined
   runtime.framePlugins = undefined
   runtime.lastFrameNow = undefined
   runtime.mouthTarget = 0
@@ -302,12 +306,18 @@ export function useLive2D(container: Ref<HTMLDivElement | undefined>) {
       }
       expressionNames.value = expressionNamesOf(runtime)
       installFramePlugins(runtime, framePluginOptions)
-      if (framePluginOptions.idleEye) {
-        const handler = () => { runtime.lastPointerMoveAt = performance.now() }
-        target.addEventListener('pointermove', handler)
-        runtime.pointerTarget = target
-        runtime.onPointerMove = handler
+      // Track the pointer to drive eye/head focus and to pause idle drift while active.
+      const handler = (event: PointerEvent): void => {
+        runtime.lastPointerMoveAt = performance.now()
+        const view = runtime.app?.view
+        if (!view || !runtime.model?.focus)
+          return
+        const rect = view.getBoundingClientRect()
+        runtime.model.focus(event.clientX - rect.left, event.clientY - rect.top)
       }
+      target.addEventListener('pointermove', handler)
+      runtime.pointerTarget = target
+      runtime.onPointerMove = handler
       fitModel(runtime, target)
 
       runtime.resizeObserver = new ResizeObserver(() => fitModel(runtime, target))

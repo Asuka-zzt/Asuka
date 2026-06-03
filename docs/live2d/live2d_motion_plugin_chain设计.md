@@ -29,7 +29,7 @@
 ## 2. 目标与非目标
 
 **做（本期）：**
-- 定义 `Live2DFramePlugin` 类型 + 一个**在 SDK `motionManager.update` 之后**执行的插件运行器（hook 方式，参考 AIRI）。
+- 定义 `Live2DFramePlugin` 类型 + 一个挂在 SDK **`beforeModelUpdate` 事件**上的插件运行器（在 motion/expression/eyeBlink/focus 之后、`model.update()` 之前执行，保证写入为最终值）。
 - 三个内置插件：
   1. **lipSync**：每帧把目标 mouthOpen（带平滑释放）写入 `ParamMouthOpenY`。
   2. **autoBlink**：受控自动眨眼，写 `ParamEyeLOpen/ParamEyeROpen`；同时**禁用 SDK 内置 eyeBlink** 避免互相打架。
@@ -53,11 +53,12 @@ store(mouthOpen / speaking / emotion / expressionCommand)
   ▼
 useLive2D
   ├── mount：Live2DModel.from(autoInteract:true)
-  │     ├── 关闭 SDK 内置 eyeBlink（internalModel.eyeBlink = null）
-  │     └── hook internalModel.motionManager.update：
-  │            原始 update(motion + expression 写参数)
-  │            → 依次执行 post 插件（在 SDK 之后写最终参数）：
-  │                 lipSync → autoBlink → idleEyeFocus
+  │     ├── 关闭 SDK 内置 eyeBlink（internalModel.eyeBlink = undefined）
+  │     ├── 监听 internalModel 'beforeModelUpdate' 事件（每帧 motion+expression+
+  │     │     eyeBlink+focus 之后、model.update() 之前，最终写参数槽位）：
+  │     │        依次执行插件：lipSync → autoBlink → idleEyeFocus
+  │     │        计时用 performance.now()（SDK 帧时间戳是秒，不是毫秒）
+  │     └── 监听 stage pointermove → model.focus(x,y) 驱动眼/头跟随
   │
   └── dispose：还原 update、还原 eyeBlink、清状态
 ```
@@ -139,12 +140,14 @@ export function createIdleEyeFocusPlugin(getActive: () => boolean, opts?: {
 
 - mount 成功后：
   - `runtime.model.internalModel.eyeBlink = undefined`（禁用 SDK 眨眼）。
-  - 取 `motionManager = internalModel.motionManager`，保存 `originalUpdate = motionManager.update.bind(...)`，替换为包裹版：调用原始 update 后，按序执行 `framePlugins`。
-  - 用 `performance.now()` 计算 `deltaMs`。
-- 暴露新增（可选）：`setIdleEye(enabled)`；`setMouthOpen` 改为写 `mouthTarget`。
-- dispose：还原 `motionManager.update = originalUpdate`、`eyeBlink`，清理状态与定时器。
+  - `internalModel.on('beforeModelUpdate', handler)`：handler 内用 `performance.now()` 计算 `deltaMs`，按序执行 `framePlugins`。
+  - `target.addEventListener('pointermove', …)` → `model.focus(clientX-rect.left, clientY-rect.top)` 驱动 SDK focus controller（眼+头），并记录 `lastPointerMoveAt` 供 idle 门控。
+- `setMouthOpen` 改为写 `mouthTarget`（插件失败时回退直写）。
+- dispose：`internalModel.off('beforeModelUpdate', handler)`、移除 pointermove 监听，清理状态与定时器。
 
-> Hook `motionManager.update`（而非另起 `app.ticker.add`）的原因：能精确控制"在 SDK 写完参数之后"执行，参数顺序确定，和 AIRI 一致；也无需担心 ticker 优先级竞争。
+> 选 `beforeModelUpdate` 事件（而非包裹 `motionManager.update` 或 `app.ticker.add`）的原因：
+> 它在 motion/expression/eyeBlink/focus **全部写完之后、`model.update()` 之前**触发，
+> 写入即最终值、不被 expression 覆盖；且无需关心 SDK 帧时间戳是秒（用 `performance.now()` 自算 deltaMs）。
 
 ---
 
@@ -165,7 +168,8 @@ export function createIdleEyeFocusPlugin(getActive: () => boolean, opts?: {
 | 决策 | 选择 | 理由 / 代价 |
 |---|---|---|
 | 表情系统 | **保留 SDK expressionManager**，不自研 exp3 controller | 阶段3 已可用；自研 blend/auto-reset 成本高、收益小 → 登记后续 |
-| hook 位置 | **包裹 `motionManager.update`**（post 插件） | 参数顺序确定，最终值不被覆盖；比 `app.ticker` 更可靠 |
+| hook 位置 | **`beforeModelUpdate` 事件**（最终写参数槽位） | 在 expression/focus 之后执行，最终值不被覆盖；计时用 `performance.now()` 规避 SDK 秒制帧时间戳 |
+| 鼠标跟随 | **pointermove → `model.focus()`** 喂 SDK focus controller | SDK `autoInteract` 依赖未加载的 `@pixi/interaction`，自管 pointermove 更可靠 |
 | 眼动 | **只补 idle 兜底**，鼠标 focus 仍交 SDK `autoInteract` | 最小改动；不重写坐标换算 |
 | 眨眼 | 接管并**禁用 SDK eyeBlink** | 避免双写抖动；代价：需在 dispose 还原 |
 | 口型 | 从响应式 watch 改为**插件每帧应用** + 平滑 | 不被 SDK 覆盖、闭嘴更自然 |
@@ -173,7 +177,7 @@ export function createIdleEyeFocusPlugin(getActive: () => boolean, opts?: {
 **风险点：**
 - **眼睑参数冲突**：若某 exp3 表情自身写 `ParamEyeLOpen/ROpen`（如闭眼表情），autoBlink 会在其后覆盖，导致表情"睁眼"。MVP 接受此限制；缓解项（登记后续）：autoBlink 改为对当前值取 min，或表情期间暂停眨眼。
 - **参数 id 因模型而异**：Frieren 用标准 Cubism id（`ParamMouthOpenY`/`ParamEyeLOpen`/`ParamEyeROpen`/`ParamEyeBallX`/`ParamEyeBallY`），其它模型可能不同 → 后续做可配置映射。
-- **HMR / 重复 mount**：必须在 dispose 严格还原 hook 与 eyeBlink，否则热更后出现双重 update。
+- **HMR / 重复 mount**：必须在 dispose `off('beforeModelUpdate')` 并移除 pointermove，否则热更后插件重复执行。
 
 ---
 
