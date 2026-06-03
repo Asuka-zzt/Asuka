@@ -15,6 +15,7 @@ from pydantic import PrivateAttr
 
 from asuka.core.graph import dispatch
 from asuka.routes import ws
+from asuka.routes.ws import ToolJsonStripper
 
 
 class FakeLanguageToolModel(BaseChatModel):
@@ -134,3 +135,27 @@ def test_ws_language_tool_result_event(ws_language_app: FastAPI) -> None:
     assert tool_events[0]["payload"]["natural_rewrite"] == "I have an apple."
     assert tool_events[0]["payload"]["language"] == "english"
     assert events[-1]["type"] == "done"
+
+
+def test_tool_json_stripper_removes_language_payload() -> None:
+    stripper = ToolJsonStripper()
+    payload = (
+        '{"language":"english","level":"B1","topic":"日常对话",'
+        '"items":[{"type":"mcq","question":"Hello?","options":["A"],'
+        '"answer":"A","explanation_zh":"解释","annotation":"/həˈloʊ/"}]}'
+    )
+
+    text = stripper.feed(f"好的！{payload}\n下面开始做题。")
+
+    assert text == "好的！\n下面开始做题。"
+    assert stripper.flush() == ""
+
+
+def test_tool_json_stripper_handles_split_payload() -> None:
+    stripper = ToolJsonStripper()
+
+    first = stripper.feed('开始{"has_error":true,"language":"english",')
+    second = stripper.feed('"items":[],"natural_rewrite":"I have an apple."}结束')
+
+    assert first == "开始"
+    assert second == "结束"

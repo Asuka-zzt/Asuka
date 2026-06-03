@@ -27,6 +27,10 @@ EMOTION_RE = re.compile(r"\[emotion:(idle|think|happy|sad)\]", re.IGNORECASE)
 EXPRESSION_RE = re.compile(r"\[expression:([A-Za-z0-9_. -]+)\]", re.IGNORECASE)
 
 LANGUAGE_TOOL_NAMES = {"correct_text", "generate_quiz"}
+LANGUAGE_JSON_KEYS = (
+    frozenset({"language", "items"}),
+    frozenset({"has_error", "natural_rewrite"}),
+)
 
 
 def _jsonable_tool_payload(output: Any) -> Any:
@@ -59,6 +63,85 @@ def _tool_name(event: dict[str, Any]) -> str | None:
         if isinstance(data_name, str):
             return data_name
     return None
+
+
+def _is_language_tool_json(text: str) -> bool:
+    """判断一段 JSON object 是否是语言工具结果，避免在聊天文本中重复展示。"""
+    try:
+        decoded = json.loads(text)
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(decoded, dict):
+        return False
+    keys = set(decoded)
+    return any(required <= keys for required in LANGUAGE_JSON_KEYS)
+
+
+class ToolJsonStripper:
+    """增量移除模型复述的语言工具 JSON object。
+
+    语言工具结果已经通过 tool.result 下发给前端卡片；如果模型又把 ToolMessage
+    的 JSON 内容原样写进自然语言回复，会造成聊天气泡里出现大段 JSON。这里仅
+    移除识别为语言工具 payload 的完整 JSON object，其他普通文本保持不变。
+    """
+
+    def __init__(self) -> None:
+        self.buffer = ""
+        self.in_json = False
+        self.depth = 0
+        self.in_string = False
+        self.escape = False
+
+    def _reset_json_state(self) -> None:
+        self.in_json = False
+        self.depth = 0
+        self.in_string = False
+        self.escape = False
+
+    def feed(self, text: str) -> str:
+        if not text:
+            return ""
+
+        output: list[str] = []
+        for char in text:
+            if not self.in_json:
+                if char == "{":
+                    self.in_json = True
+                    self.depth = 1
+                    self.buffer = "{"
+                else:
+                    output.append(char)
+                continue
+
+            self.buffer += char
+            if self.escape:
+                self.escape = False
+                continue
+            if char == "\\" and self.in_string:
+                self.escape = True
+                continue
+            if char == '"':
+                self.in_string = not self.in_string
+                continue
+            if self.in_string:
+                continue
+            if char == "{":
+                self.depth += 1
+            elif char == "}":
+                self.depth -= 1
+                if self.depth == 0:
+                    if not _is_language_tool_json(self.buffer):
+                        output.append(self.buffer)
+                    self.buffer = ""
+                    self._reset_json_state()
+
+        return "".join(output)
+
+    def flush(self) -> str:
+        remaining = self.buffer if self.in_json else ""
+        self.buffer = ""
+        self._reset_json_state()
+        return remaining
 
 
 class Live2DTagExtractor:
@@ -190,6 +273,7 @@ async def ws_chat(websocket: WebSocket, conversation_id: str) -> None:
             agent = await build_agent(agent_cfg)
 
             extractor = Live2DTagExtractor()
+            json_stripper = ToolJsonStripper()
 
             async for event in agent.astream_events(
                 {"messages": [HumanMessage(content=message)]},
@@ -200,7 +284,8 @@ async def ws_chat(websocket: WebSocket, conversation_id: str) -> None:
                     chunk = event["data"]["chunk"]
                     content = chunk.content
                     if content and isinstance(content, str):
-                        clean, evts = extractor.feed(content)
+                        visible_content = json_stripper.feed(content)
+                        clean, evts = extractor.feed(visible_content)
                         for evt in evts:
                             await websocket.send_json(evt)
                         if clean:
@@ -221,7 +306,14 @@ async def ws_chat(websocket: WebSocket, conversation_id: str) -> None:
                         )
 
             # 结束时 flush 剩余干净文字（理论上不应有未闭合标签）
-            remaining = extractor.flush()
+            tail = json_stripper.flush()
+            remaining = ""
+            if tail:
+                clean_tail, evts = extractor.feed(tail)
+                for evt in evts:
+                    await websocket.send_json(evt)
+                remaining += clean_tail
+            remaining += extractor.flush()
             if remaining:
                 await websocket.send_json({"type": "token", "content": remaining})
 
