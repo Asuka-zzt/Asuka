@@ -1,6 +1,6 @@
 """FastAPI 应用入口。
 
-启动：uv run python -m asukabot.main
+启动：uv run python -m asuka.main
 """
 
 from collections.abc import AsyncIterator
@@ -8,10 +8,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from asukabot import __version__
-from asukabot.config import get_settings
-from asukabot.core.graph.checkpointer import close_checkpointer
-from asukabot.routes import chat, tts, wiki, ws
+from asuka import __version__
+from asuka.config import get_settings
+from asuka.core.graph.checkpointer import close_checkpointer
+from asuka.routes import chat, tts, wiki, ws
 
 
 @asynccontextmanager
@@ -23,7 +23,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     """构建并返回 FastAPI 应用。"""
-    app = FastAPI(title="AsukaBot", version=__version__, lifespan=lifespan)
+    app = FastAPI(title="Asuka", version=__version__, lifespan=lifespan)
 
     @app.get("/health")
     async def health() -> dict[str, str]:
@@ -45,7 +45,7 @@ def main() -> None:
 
     settings = get_settings()
     uvicorn.run(
-        "asukabot.main:app",
+        "asuka.main:app",
         host=settings.host,
         port=settings.port,
         reload=settings.debug,

@@ -7,8 +7,8 @@ import asyncio
 import time
 from pathlib import Path
 
-from asukabot.config import get_settings
-from asukabot.core.graph.wiki import build_wiki_graph
+from asuka.config import get_settings
+from asuka.core.graph.wiki import build_wiki_graph
 
 TARGET = "ref/normal_agent/astrbot/astrbot/core/pipeline"
 

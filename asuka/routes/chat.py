@@ -4,8 +4,8 @@ from fastapi import APIRouter
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
 
-from asukabot.core.graph.dispatch import build_agent
-from asukabot.routes.ws import Live2DTagExtractor  # reuse for tag stripping
+from asuka.core.graph.dispatch import build_agent
+from asuka.routes.ws import Live2DTagExtractor  # reuse for tag stripping
 
 router = APIRouter()
 

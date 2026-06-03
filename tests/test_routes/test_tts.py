@@ -6,7 +6,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from asukabot.routes import tts
+from asuka.routes import tts
 
 
 @pytest.fixture

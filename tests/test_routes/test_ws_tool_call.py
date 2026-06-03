@@ -17,8 +17,8 @@ from langchain_core.tools import tool
 from langgraph.checkpoint.memory import MemorySaver
 from pydantic import PrivateAttr
 
-from asukabot.core.graph import dispatch
-from asukabot.routes import ws
+from asuka.core.graph import dispatch
+from asuka.routes import ws
 
 
 class FakeToolCallingModel(BaseChatModel):

@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, Field
 
-from asukabot.config import get_settings
+from asuka.config import get_settings
 
 
 class AgentConfig(BaseModel):

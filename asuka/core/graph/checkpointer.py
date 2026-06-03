@@ -8,7 +8,7 @@ from pathlib import Path
 
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
-from asukabot.config import get_settings
+from asuka.config import get_settings
 
 _cm: object | None = None
 _saver: AsyncSqliteSaver | None = None

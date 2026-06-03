@@ -6,8 +6,8 @@ from fastapi import APIRouter, HTTPException, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from asukabot.api.provider import tts as tts_provider
-from asukabot.config import get_settings
+from asuka.api.provider import tts as tts_provider
+from asuka.config import get_settings
 
 router = APIRouter()
 

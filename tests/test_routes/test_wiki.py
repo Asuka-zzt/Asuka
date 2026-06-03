@@ -7,7 +7,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from asukabot.routes import wiki
+from asuka.routes import wiki
 from tests.conftest import FakeWikiLLM
 
 

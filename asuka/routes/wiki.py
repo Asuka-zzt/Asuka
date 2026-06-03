@@ -13,9 +13,9 @@ from zipfile import ZipFile
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from asukabot.config import get_settings
-from asukabot.core.graph.wiki import build_wiki_graph
-from asukabot.core.graph.wiki.fs import (
+from asuka.config import get_settings
+from asuka.core.graph.wiki import build_wiki_graph
+from asuka.core.graph.wiki.fs import (
     DEFAULT_EXCLUDE_PATTERNS,
     DEFAULT_INCLUDE_PATTERNS,
 )
@@ -91,7 +91,7 @@ def _download_github_repo(repo_url: str, token: str | None, target_root: Path) -
     zip_url, _ = _github_zip_url(repo_url)
     headers = {
         "Accept": "application/vnd.github+json",
-        "User-Agent": "AsukaBot-Codebase2Wiki",
+        "User-Agent": "Asuka-Codebase2Wiki",
     }
     if token:
         headers["Authorization"] = f"Bearer {token}"
@@ -152,7 +152,7 @@ async def generate_wiki(req: GenerateWikiRequest) -> GenerateWikiResponse:
     output = req.output.strip() or settings.wiki_output_dir
 
     try:
-        with TemporaryDirectory(prefix="asukabot-wiki-") as temp_dir:
+        with TemporaryDirectory(prefix="asuka-wiki-") as temp_dir:
             if req.repo:
                 project_path = await asyncio.to_thread(
                     _download_github_repo,
