@@ -33,12 +33,12 @@ onUnmounted(() => store.stop())
 }
 
 .dot.on {
-  background: #3ddc84;
-  box-shadow: 0 0 8px #3ddc84;
+  background: var(--success);
+  box-shadow: 0 0 8px var(--success);
 }
 
 .dot.off {
-  background: #888;
+  background: var(--text-faint);
 }
 
 .label {

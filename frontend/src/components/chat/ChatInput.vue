@@ -37,7 +37,7 @@ function submit() {
 
 <style scoped>
 .input-bar {
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--border);
   padding: 0.7rem 0.8rem;
 }
 
@@ -51,22 +51,22 @@ function submit() {
   flex: 1;
   resize: none;
   max-height: 8rem;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--surface-3);
+  border: 1px solid var(--border);
   border-radius: 0.7rem;
   padding: 0.55rem 0.7rem;
-  color: #ececf5;
+  color: var(--text);
   font-size: 0.9rem;
 }
 
 .textarea:focus {
   outline: none;
-  border-color: rgba(124, 108, 240, 0.6);
+  border-color: var(--primary);
 }
 
 .send {
-  background: #7c6cf0;
-  color: #fff;
+  background: var(--primary);
+  color: var(--on-primary);
   border-radius: 0.7rem;
   padding: 0.55rem 1rem;
   font-size: 0.9rem;
@@ -82,10 +82,10 @@ function submit() {
 }
 
 .status.ok {
-  color: #3ddc84;
+  color: var(--success);
 }
 
 .status.pending {
-  color: #f0b03c;
+  color: var(--warning);
 }
 </style>

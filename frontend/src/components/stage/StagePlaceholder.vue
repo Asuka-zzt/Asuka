@@ -34,9 +34,9 @@ withDefaults(defineProps<{
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px dashed rgba(124, 108, 240, 0.35);
+  border: 2px dashed rgba(26, 169, 210, 0.35);
   border-radius: 1.5rem;
-  background: linear-gradient(180deg, rgba(124, 108, 240, 0.06), rgba(124, 108, 240, 0.01));
+  background: linear-gradient(180deg, rgba(26, 169, 210, 0.06), rgba(26, 169, 210, 0.01));
 }
 
 .spark {

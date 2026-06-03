@@ -31,8 +31,8 @@
   justify-content: center;
   border-radius: 1rem;
   overflow: hidden;
-  background: linear-gradient(160deg, rgba(124, 108, 240, 0.10), rgba(124, 108, 240, 0.02));
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: linear-gradient(160deg, var(--primary-soft), var(--primary-softer));
+  border: 1px solid var(--border);
 }
 
 .panel-area {
@@ -42,9 +42,9 @@
   max-width: 500px;
   border-radius: 1rem;
   overflow: hidden;
-  background: rgba(20, 18, 30, 0.55);
+  background: var(--surface-translucent);
   backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border);
 }
 
 @media (max-width: 768px) {

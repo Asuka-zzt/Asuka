@@ -118,18 +118,18 @@ watch(expressionNames, (names) => {
   gap: 0.55rem;
   transform: translateX(-50%);
   padding: 0.55rem 0.75rem;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--border-strong);
   border-radius: 999px;
-  background: rgba(10, 9, 16, 0.72);
-  color: rgba(232, 230, 240, 0.82);
+  background: var(--scrim);
+  color: var(--text);
   font-size: 0.82rem;
 }
 
 .spinner {
   width: 0.8rem;
   height: 0.8rem;
-  border: 2px solid rgba(232, 230, 240, 0.28);
-  border-top-color: #8ee8d3;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--primary);
   border-radius: 999px;
   animation: spin 0.8s linear infinite;
 }
