@@ -1,8 +1,26 @@
 <script setup lang="ts">
+import type { VoiceState } from '@/types/realtime'
+
 import { ref } from 'vue'
 
-const props = defineProps<{ sending: boolean, connected: boolean }>()
-const emit = defineEmits<{ send: [text: string] }>()
+import VoiceInputButton from './VoiceInputButton.vue'
+
+const props = withDefaults(defineProps<{
+  sending: boolean
+  connected: boolean
+  voiceState?: VoiceState
+  voiceSupported?: boolean
+  transcript?: string
+}>(), {
+  voiceState: 'idle',
+  voiceSupported: false,
+  transcript: '',
+})
+const emit = defineEmits<{
+  send: [text: string]
+  startVoice: []
+  stopVoice: []
+}>()
 
 const text = ref('')
 
@@ -17,6 +35,9 @@ function submit() {
 
 <template>
   <div class="input-bar">
+    <div v-if="transcript" class="transcript">
+      {{ transcript }}
+    </div>
     <div class="row">
       <textarea
         v-model="text"
@@ -24,6 +45,12 @@ function submit() {
         placeholder="说点什么…（Enter 发送，Shift+Enter 换行）"
         class="textarea"
         @keydown.enter.exact.prevent="submit"
+      />
+      <VoiceInputButton
+        :state="voiceState"
+        :supported="voiceSupported"
+        @start="emit('startVoice')"
+        @stop="emit('stopVoice')"
       />
       <button class="send" :disabled="sending || !text.trim()" @click="submit">
         {{ sending ? '…' : '发送' }}
@@ -45,6 +72,16 @@ function submit() {
   display: flex;
   align-items: flex-end;
   gap: 0.5rem;
+}
+
+.transcript {
+  margin-bottom: 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 0.55rem;
+  background: var(--surface-2);
+  color: var(--muted);
+  padding: 0.45rem 0.6rem;
+  font-size: 0.82rem;
 }
 
 .textarea {

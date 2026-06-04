@@ -1,6 +1,7 @@
 // REST 封装：对齐后端 main.py / routes/chat.py。默认走 Vite proxy（相对路径）。
 import type { GenerateWikiRequest, GenerateWikiResponse } from '@/types/wiki'
 import type { LanguageCode } from '@/types/language'
+import type { RealtimeSessionResponse, SdpMessage } from '@/types/realtime'
 
 const apiBase = import.meta.env.VITE_API_BASE ?? ''
 
@@ -80,4 +81,37 @@ export async function postTtsStream(text: string, voice?: string, language?: Lan
   if (!res.body)
     throw new Error('tts stream response has no body')
   return res
+}
+
+export async function createRealtimeSession(
+  conversationId: string,
+  payload: { persona_id?: string, level?: string, language?: string, voice?: string } = {},
+): Promise<RealtimeSessionResponse> {
+  const res = await fetch(`${apiBase}/api/realtime/sessions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ conversation_id: conversationId, ...payload }),
+  })
+  if (!res.ok)
+    throw new Error(await errorMessage(res, `realtime session ${res.status}`))
+  return res.json() as Promise<RealtimeSessionResponse>
+}
+
+export async function postRealtimeOffer(sessionId: string, offer: SdpMessage): Promise<SdpMessage> {
+  const res = await fetch(`${apiBase}/api/realtime/sessions/${sessionId}/offer`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(offer),
+  })
+  if (!res.ok)
+    throw new Error(await errorMessage(res, `realtime offer ${res.status}`))
+  return res.json() as Promise<SdpMessage>
+}
+
+export async function closeRealtimeSession(sessionId: string): Promise<void> {
+  const res = await fetch(`${apiBase}/api/realtime/sessions/${sessionId}`, {
+    method: 'DELETE',
+  })
+  if (!res.ok && res.status !== 404)
+    throw new Error(await errorMessage(res, `realtime close ${res.status}`))
 }

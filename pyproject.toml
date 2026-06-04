@@ -16,6 +16,12 @@ dependencies = [
     "langchain-anthropic>=0.2.0",
     "socksio>=1.0.0",
     "edge-tts>=7.2.8",
+    "aiortc>=1.14.0",
+    "av>=16.1.0",
+    "numpy>=2.4.6",
+    "faster-whisper>=1.2.1",
+    "piper-tts>=1.4.2",
+    "websockets>=16.0",
 ]
 
 [dependency-groups]

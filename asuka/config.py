@@ -46,6 +46,52 @@ class Settings(BaseSettings):
     tts_pitch: str = "+0Hz"
     tts_max_chars: int = 1200
 
+    # Realtime voice ASR
+    asr_model: str = "small"
+    asr_device: str = "cpu"
+    asr_compute_type: str = "int8"
+
+    # Realtime voice VAD
+    voice_vad_rms_threshold: float = 0.012
+    voice_vad_min_speech_ms: int = 300
+    voice_vad_silence_ms: int = 700
+    voice_vad_max_speech_ms: int = 20_000
+
+    # Realtime voice Piper TTS
+    realtime_tts_provider: str = "piper"
+    piper_model_by_language: dict[str, str] = {}
+    piper_sample_rate: int = 48_000
+
+    # Realtime voice Qwen3-TTS via DashScope
+    dashscope_api_key: str = ""
+    qwen_tts_base_url: str = (
+        "https://dashscope.aliyuncs.com/api/v1/services/aigc/"
+        "multimodal-generation/generation"
+    )
+    qwen_tts_model: str = "qwen3-tts-flash"
+    qwen_tts_voice: str = "Cherry"
+    qwen_tts_timeout_seconds: float = 30.0
+    qwen_tts_language_type_by_language: dict[str, str] = {
+        "chinese": "Chinese",
+        "english": "English",
+        "japanese": "Japanese",
+    }
+
+    # Realtime voice Volcengine TTS
+    volcengine_tts_base_url: str = (
+        "wss://openspeech.bytedance.com/api/v3/tts/bidirection"
+    )
+    volcengine_tts_api_key: str = ""
+    volcengine_tts_app_id: str = ""
+    volcengine_tts_access_key: str = ""
+    volcengine_tts_resource_id: str = "seed-tts-2.0"
+    volcengine_tts_voice_type: str = "zh_female_vv_uranus_bigtts"
+    volcengine_tts_encoding: str = "pcm"
+    # Match the WebRTC output track rate so realtime audio needs no resampling
+    # (per-segment resampling adds boundary clicks). Volcengine supports 48 kHz.
+    volcengine_tts_sample_rate: int = 48_000
+    volcengine_api_timeout_seconds: float = 30.0
+
 
 @lru_cache
 def get_settings() -> Settings:
