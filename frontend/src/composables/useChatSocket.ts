@@ -11,8 +11,6 @@ import { useLive2DStore } from '@/stores/live2d'
 
 const EMOTION_TAG_RE = /\[emotion:(idle|think|happy|sad)\]\s*$/i
 const EXPRESSION_TAG_RE = /\[expression:([A-Za-z0-9_. -]+)\]\s*$/i
-const QUESTION_START_RE = /^\s*(?:#{1,6}\s*)?(?:(?:\d+|[1-9]️⃣)[.)、]?\s*|(?:\*\*)?(?:Question|题目)\s*\d+)/i
-const CLOSING_RE = /^\s*(?:你|如果|需要|想要|答完|完成|告诉我|可以|再来)/
 
 interface SendContext {
   persona_id?: PersonaId
@@ -57,20 +55,6 @@ function isLanguageToolResult(data: WsEvent): data is Extract<WsEvent, { type: '
   return data.type === 'tool.result' && (data.name === 'correct_text' || data.name === 'generate_quiz')
 }
 
-function extractQuizSpeechSegments(content: string): { intro: string, closing: string } {
-  const lines = content.split('\n')
-  const firstQuestion = lines.findIndex(line => QUESTION_START_RE.test(line.trim()))
-  if (firstQuestion === -1)
-    return { intro: content.trim(), closing: '' }
-
-  const intro = lines.slice(0, firstQuestion).join('\n').trim()
-  const closingStart = lines.findIndex((line, index) =>
-    index > firstQuestion && CLOSING_RE.test(line.trim()),
-  )
-  const closing = closingStart === -1 ? '' : lines.slice(closingStart).join('\n').trim()
-  return { intro, closing }
-}
-
 // 封装 /ws/{conversation_id}：连接、流式 token、基础重连。
 // 在组件 setup 中调用一次（ChatPanel），返回 send()。
 export function useChatSocket() {
@@ -82,7 +66,6 @@ export function useChatSocket() {
   let closedByUser = false
   let reconnecting = false
   let quizTtsMode = false
-  let hadPreQuizSpeech = false
 
   function speakWithModel(event: Event) {
     const detail = (event as CustomEvent<ModelSpeechRequest>).detail
@@ -123,11 +106,10 @@ export function useChatSocket() {
       const data = JSON.parse(e.data as string) as WsEvent
       if (data.type === 'token') {
         const message = store.appendToken(data.content)
-        if (message && !quizTtsMode) {
+        // Quiz responses never auto-speak (questions play only via the QuizCard
+        // ▶ button), so don't feed their text into the TTS queue.
+        if (message && !quizTtsMode)
           tts.feedSnapshot(message.content)
-          if (data.content.trim())
-            hadPreQuizSpeech = true
-        }
       }
       else if (data.type === 'done') {
         const message = store.finalize()
@@ -135,24 +117,19 @@ export function useChatSocket() {
           const parsed = parseVisualTags(message.content)
           message.content = parsed.content
           if (quizTtsMode) {
-            tts.flush(parsed.emotion)
-            const segments = extractQuizSpeechSegments(parsed.content)
-            if (!hadPreQuizSpeech && segments.intro)
-              tts.enqueueText(segments.intro, undefined)
-            if (segments.closing)
-              tts.enqueueText(segments.closing, undefined)
+            // No auto-speech for quiz responses; keep only the visual emotion.
+            live2d.setEmotion(parsed.emotion)
           }
           else {
             tts.flush(parsed.emotion)
+            if (parsed.expression)
+              tts.attachVisualCue({ expression: parsed.expression })
           }
-          if (!quizTtsMode && parsed.expression)
-            tts.attachVisualCue({ expression: parsed.expression })
         }
         else {
           live2d.setEmotion('idle')
         }
         quizTtsMode = false
-        hadPreQuizSpeech = false
       }
       else if (data.type === 'error') {
         store.setError(data.content)
@@ -164,6 +141,11 @@ export function useChatSocket() {
           payload: data.payload,
         } as LanguageToolResult)
         if (data.name === 'generate_quiz') {
+          // Stop feeding new text into TTS from here on, but DON'T stop playback:
+          // the lead-in sentence (e.g. "好的，我换一组新的填空题给你！") has already
+          // been queued as a complete chunk and should finish. Calling stop() here
+          // cut it off mid-sentence. Questions stream after this point and, with
+          // quizTtsMode on, are never auto-spoken — only the QuizCard ▶ plays them.
           quizTtsMode = true
         }
       }
@@ -198,7 +180,6 @@ export function useChatSocket() {
     store.pushUser(t)
     tts.stop()
     quizTtsMode = false
-    hadPreQuizSpeech = false
     live2d.setThinking()
     store.startAssistant()
     if (ws && ws.readyState === WebSocket.OPEN)

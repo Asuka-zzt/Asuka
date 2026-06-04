@@ -162,6 +162,7 @@ LLM 调用在测试中用 `FakeListChatModel` mock，不发真实请求。
 
 ## 7. Git & Commit Rules
 
+- 除非本轮只做分析或临时实验，否则每完成一个有意义且已验证的文件改动，都应提交一个简短、准确的 commit。
 - 分支：`feat/xxx`、`fix/xxx`、`refactor/xxx`
 - Commit：`type(scope): 描述`，如 `feat(graph): add concurrent dispatch via Send API`
 - **不自动 push**；不提交 `.env`、`*.db`、`__pycache__/`、`*.sqlite`
@@ -171,7 +172,6 @@ LLM 调用在测试中用 `FakeListChatModel` mock，不发真实请求。
 
 ## 8. Important Constraints
 
-- `docs/` 只读，不修改设计文档,只以追加的方式添加相关说明。
 - API Key 只从环境变量读取（`config.py` pydantic-settings）。
 - 插件执行必须通过 `plugins/sandbox.py`，不得直接 `exec()`。
 - `git push --force`、`git reset --hard`、清空向量库，需用户二次确认。
